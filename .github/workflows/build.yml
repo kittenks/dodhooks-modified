@@ -1,75 +1,57 @@
-# This workflow is modeled after GitHub's official cmake-multi-platform.yml
-# starter template (https://github.com/actions/starter-workflows), but adapted
-# for the DoDHooks SourceMod extension which uses AMBuild (Python) instead of
-# CMake. It builds across Windows and Linux on x86 and x86_64.
 name: Build
 
 "on":
   push:
-    branches: ["main", "master"]
+    branches: [main, master]
+    tags: ["v*"]
   pull_request:
-    branches: ["main", "master"]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
-  # Pinned versions — keep in sync with the AMBuildScript requirements
-  SM_BRANCH: 1.12-dev
-  MMSOURCE_BRANCH: 1.12-dev
-  HL2SDK_DODS_BRANCH: dods
+  SM_BRANCH: "1.12-dev"
+  MMSOURCE_BRANCH: "1.12-dev"
+  HL2SDK_DODS_BRANCH: "dods"
   PYTHON_VERSION: "3.11"
-  AMBUILD_VERSION: "2.2.0"
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
     strategy:
-      # Set fail-fast to false so a failure on one platform does not cancel
-      # the others — you get full feedback from every matrix combination.
       fail-fast: false
       matrix:
-        # Base OS list — compiler / arch are filled in via include below.
-        os: [ubuntu-22.04, windows-2022]
-        build_type: [Release]
         include:
-          # Linux x86_64 — GCC
           - os: ubuntu-22.04
             arch: x86_64
             cc: gcc
             cxx: g++
             msvc_arch: ""
-          # Linux x86 — GCC multilib
           - os: ubuntu-22.04
             arch: x86
             cc: gcc
             cxx: g++
             msvc_arch: ""
-          # Windows x86_64 — MSVC
           - os: windows-2022
             arch: x86_64
             cc: cl
             cxx: cl
             msvc_arch: x64
-          # Windows x86 — MSVC
           - os: windows-2022
             arch: x86
             cc: cl
             cxx: cl
             msvc_arch: x86
 
-    name: ${{ matrix.os }} / ${{ matrix.arch }} / ${{ matrix.build_type }}
+    runs-on: ${{ matrix.os }}
 
     steps:
-      # 1. Checkout the extension source (with submodules)
       - name: Checkout dodhooks
         uses: actions/checkout@v4
         with:
           submodules: recursive
           path: dodhooks
 
-      # 2. Checkout SourceMod (headers + AMBuild helpers)
       - name: Checkout SourceMod
         uses: actions/checkout@v4
         with:
@@ -77,7 +59,6 @@ jobs:
           ref: ${{ env.SM_BRANCH }}
           path: sourcemod
 
-      # 3. Checkout MetaMod:Source
       - name: Checkout MetaMod:Source
         uses: actions/checkout@v4
         with:
@@ -85,8 +66,6 @@ jobs:
           ref: ${{ env.MMSOURCE_BRANCH }}
           path: mmsource
 
-      # 4. Checkout HL2SDK for Day of Defeat: Source (branch = dods,
-      #    directory = hl2sdk-dods, configure flag --sdks=dod)
       - name: Checkout hl2sdk-dods
         uses: actions/checkout@v4
         with:
@@ -94,19 +73,33 @@ jobs:
           ref: ${{ env.HL2SDK_DODS_BRANCH }}
           path: hl2sdk-dods
 
-      # 5. Set up the pinned Python version
+      # ✅ 关键修复：checkout ambuild 源码，不再从 PyPI 装
+      - name: Checkout AMBuild
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/ambuild
+          ref: master
+          path: ambuild
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # 6. Install the exact AMBuild version we tested against.
-      #    `AMBuild` (capital A) is the correct PyPI package name.
-      - name: Install AMBuild ${{ env.AMBUILD_VERSION }}
-        run: pip install "AMBuild==${{ env.AMBUILD_VERSION }}"
+      # ✅ 本地安装，不锁版本号
+      - name: Install AMBuild (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          python -m pip install --upgrade pip
+          pip install ./ambuild
 
-      # 7. Linux x86 multilib toolchain (only for the 32-bit Linux job)
-      - name: Install Linux x86 multilib toolchain
+      - name: Install AMBuild (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          python -m pip install --upgrade pip
+          pip install .\ambuild
+
+      - name: Install Linux x86 multilib
         if: runner.os == 'Linux' && matrix.arch == 'x86'
         run: |
           sudo dpkg --add-architecture i386
@@ -115,68 +108,57 @@ jobs:
             gcc-multilib g++-multilib lib32stdc++6 \
             zlib1g-dev zlib1g-dev:i386 libc6-dev-i386 linux-libc-dev:i386
 
-      # 8. Linux x86_64 build deps
-      - name: Install Linux x86_64 build deps
+      - name: Install Linux x86_64 deps
         if: runner.os == 'Linux' && matrix.arch == 'x86_64'
-        run: sudo apt-get update && sudo apt-get install -y gcc g++ libc6-dev
+        run: sudo apt-get install -y gcc g++ libc6-dev
 
-      # 9. Set up the correct MSVC architecture (only on Windows)
       - name: Setup MSVC
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.msvc_arch }}
 
-      # 10. Configure (Linux) — equivalent of `cmake -B build` in the template
       - name: Configure (Linux)
         if: runner.os == 'Linux'
         working-directory: dodhooks
         env:
           CC: ${{ matrix.cc }}
           CXX: ${{ matrix.cxx }}
-          BUILD_TYPE: ${{ matrix.build_type }}
         run: |
           rm -rf build
           mkdir build && cd build
           python3 ../configure.py \
             --targets=${{ matrix.arch }} \
             --enable-optimize \
-            --sm-path=${{ github.workspace }}/sourcemod \
-            --mms-path=${{ github.workspace }}/mmsource \
-            --hl2sdk-root=${{ github.workspace }} \
+            --sm-path=$GITHUB_WORKSPACE/sourcemod \
+            --mms-path=$GITHUB_WORKSPACE/mmsource \
+            --hl2sdk-root=$GITHUB_WORKSPACE \
             --sdks=dod
-          # Fail fast with a clear message if configure did not produce a build
-          test -f .ambuild2/vars || { echo "configure failed: no .ambuild2/vars"; exit 1; }
+          test -f .ambuild2/vars || { echo "configure failed"; exit 1; }
 
-      # 11. Configure (Windows)
       - name: Configure (Windows)
         if: runner.os == 'Windows'
         working-directory: dodhooks
         shell: cmd
-        env:
-          BUILD_TYPE: ${{ matrix.build_type }}
         run: |
           if exist build rmdir /s /q build
           mkdir build && cd build
           python ..\configure.py ^
             --targets=${{ matrix.arch }} ^
             --enable-optimize ^
-            --sm-path=${{ github.workspace }}\sourcemod ^
-            --mms-path=${{ github.workspace }}\mmsource ^
-            --hl2sdk-root=${{ github.workspace }} ^
+            --sm-path=%GITHUB_WORKSPACE%\sourcemod ^
+            --mms-path=%GITHUB_WORKSPACE%\mmsource ^
+            --hl2sdk-root=%GITHUB_WORKSPACE% ^
             --sdks=dod
-          if errorlevel 1 exit /b 1
           if not exist .ambuild2\vars (
-            echo configure failed: no .ambuild2\vars
+            echo configure did not produce .ambuild2\vars
             exit /b 1
           )
 
-      # 12. Build — equivalent of `cmake --build build`
       - name: Build
         working-directory: dodhooks/build
         run: ambuild
 
-      # 13. Upload the compiled extension + gamedata as an artifact
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -184,8 +166,6 @@ jobs:
           path: dodhooks/build/package/*
           if-no-files-found: error
 
-  # Release job — fires only when a tag starting with 'v' is pushed.
-  # Mirrors the "Release nightly" step from the cmake template.
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
@@ -194,12 +174,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Package artifacts
+      - name: Package
         run: |
           cd artifacts
-          for d in dodhooks-*; do zip -r "${{ github.workspace }}/$d.zip" "$d"; done
-          cd "${{ github.workspace }}"
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+          for d in dodhooks-*; do zip -r "../$d.zip" "$d"; done
+          cd ..
+      - uses: softprops/action-gh-release@v2
         with:
           files: dodhooks-*.zip
