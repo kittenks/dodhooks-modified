@@ -2,19 +2,17 @@ name: Build
 
 on:
   push:
-    branches: [main, master, sm-1.12]
-    tags: ["v*"]
+    branches:
+      - main
+      - master
+      - sm-1.12
+    tags:
+      - "v*"
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: write
-
-env:
-  PYTHON_VERSION: "3.11"
-  SM_REF: "1.12-dev"
-  MMS_REF: "1.11-dev"
-  HL2SDK_REF: "dods"
 
 jobs:
   build:
@@ -32,10 +30,7 @@ jobs:
             cc: cl
             cxx: cl
             msvc_arch: x64
-
     runs-on: ${{ matrix.os }}
-    name: ${{ matrix.os }}-${{ matrix.arch }}
-
     steps:
       - name: Checkout dodhooks
         uses: actions/checkout@v4
@@ -47,29 +42,29 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: alliedmodders/sourcemod
-          ref: ${{ env.SM_REF }}
+          ref: 1.12-dev
           path: sourcemod
 
       - name: Checkout MetaMod:Source
         uses: actions/checkout@v4
         with:
           repository: alliedmodders/metamod-source
-          ref: ${{ env.MMS_REF }}
+          ref: 1.11-dev
           path: mmsource
 
       - name: Checkout hl2sdk-dods
         uses: actions/checkout@v4
         with:
           repository: alliedmodders/hl2sdk
-          ref: ${{ env.HL2SDK_REF }}
+          ref: dods
           path: hl2sdk-dods
 
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: "3.11"
 
-      - name: Install AMBuild 2.2.0
+      - name: Install AMBuild
         run: pip install "AMBuild==2.2.0"
 
       - name: Install Linux build deps
@@ -78,7 +73,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc g++ libc6-dev
 
-      - name: Setup MSVC ${{ matrix.msvc_arch }}
+      - name: Setup MSVC
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -92,7 +87,8 @@ jobs:
           CXX: ${{ matrix.cxx }}
         run: |
           rm -rf build
-          mkdir -p build && cd build
+          mkdir build
+          cd build
           python3 ../configure.py \
             --targets=${{ matrix.arch }} \
             --enable-optimize \
@@ -107,7 +103,8 @@ jobs:
         shell: cmd
         run: |
           if exist build rmdir /s /q build
-          mkdir build && cd build
+          mkdir build
+          cd build
           python ..\configure.py ^
             --targets=${{ matrix.arch }} ^
             --enable-optimize ^
@@ -115,6 +112,34 @@ jobs:
             --mms-path=%GITHUB_WORKSPACE%\mmsource ^
             --hl2sdk-root=%GITHUB_WORKSPACE% ^
             --sdks=dod
+
+      - name: Build
+        working-directory: dodhooks/build
+        run: ambuild
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dodhooks-${{ runner.os }}-${{ matrix.arch }}
+          path: dodhooks/build/package/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Package
+        run: |
+          cd artifacts
+          for d in dodhooks-*; do zip -r "../$d.zip" "$d"; done
+          cd ..
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dodhooks-*.zip
 
       - name: Build
         working-directory: dodhooks/build
