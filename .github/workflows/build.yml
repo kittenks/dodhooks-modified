@@ -15,6 +15,7 @@ env:
   MMSOURCE_BRANCH: "1.12-dev"
   HL2SDK_DODS_BRANCH: "dods"
   PYTHON_VERSION: "3.11"
+  AMBUILD_BRANCH: "master"
 
 jobs:
   build:
@@ -73,12 +74,11 @@ jobs:
           ref: ${{ env.HL2SDK_DODS_BRANCH }}
           path: hl2sdk-dods
 
-      # ✅ 关键修复：checkout ambuild 源码，不再从 PyPI 装
-      - name: Checkout AMBuild
+      - name: Checkout AMBuild source
         uses: actions/checkout@v4
         with:
           repository: alliedmodders/ambuild
-          ref: master
+          ref: ${{ env.AMBUILD_BRANCH }}
           path: ambuild
 
       - name: Set up Python
@@ -86,18 +86,33 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # ✅ 本地安装，不锁版本号
       - name: Install AMBuild (Linux)
         if: runner.os == 'Linux'
         run: |
           python -m pip install --upgrade pip
           pip install ./ambuild
+        shell: bash
 
       - name: Install AMBuild (Windows)
         if: runner.os == 'Windows'
         run: |
           python -m pip install --upgrade pip
           pip install .\ambuild
+        shell: pwsh
+
+      - name: Verify AMBuild install
+        run: |
+          python -c "from ambuild2 import run; print('AMBuild API:', getattr(run, 'CURRENT_API', 'unknown'))"
+          python -c "from ambuild2 import Extension; print('Extension module: OK')"
+        shell: bash
+        if: runner.os == 'Linux'
+
+      - name: Verify AMBuild install (Windows)
+        run: |
+          python -c "from ambuild2 import run; print('AMBuild API:', getattr(run, 'CURRENT_API', 'unknown'))"
+          python -c "from ambuild2 import Extension; print('Extension module: OK')"
+        shell: pwsh
+        if: runner.os == 'Windows'
 
       - name: Install Linux x86 multilib
         if: runner.os == 'Linux' && matrix.arch == 'x86'
@@ -107,10 +122,15 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             gcc-multilib g++-multilib lib32stdc++6 \
             zlib1g-dev zlib1g-dev:i386 libc6-dev-i386 linux-libc-dev:i386
+        shell: bash
 
       - name: Install Linux x86_64 deps
         if: runner.os == 'Linux' && matrix.arch == 'x86_64'
-        run: sudo apt-get install -y gcc g++ libc6-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc g++ libc6-dev
+        shell: bash
 
       - name: Setup MSVC
         if: runner.os == 'Windows'
@@ -130,11 +150,13 @@ jobs:
           python3 ../configure.py \
             --targets=${{ matrix.arch }} \
             --enable-optimize \
-            --sm-path=$GITHUB_WORKSPACE/sourcemod \
-            --mms-path=$GITHUB_WORKSPACE/mmsource \
-            --hl2sdk-root=$GITHUB_WORKSPACE \
+            --sm-path=${{ github.workspace }}/sourcemod \
+            --mms-path=${{ github.workspace }}/mmsource \
+            --hl2sdk-root=${{ github.workspace }} \
             --sdks=dod
-          test -f .ambuild2/vars || { echo "configure failed"; exit 1; }
+          test -f .ambuild2/vars || { echo "ERROR: configure did not produce .ambuild2/vars"; exit 1; }
+          echo "Configure OK - .ambuild2/vars exists"
+        shell: bash
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
@@ -146,18 +168,48 @@ jobs:
           python ..\configure.py ^
             --targets=${{ matrix.arch }} ^
             --enable-optimize ^
-            --sm-path=%GITHUB_WORKSPACE%\sourcemod ^
-            --mms-path=%GITHUB_WORKSPACE%\mmsource ^
-            --hl2sdk-root=%GITHUB_WORKSPACE% ^
+            --sm-path=${{ github.workspace }}\sourcemod ^
+            --mms-path=${{ github.workspace }}\mmsource ^
+            --hl2sdk-root=${{ github.workspace }} ^
             --sdks=dod
           if not exist .ambuild2\vars (
-            echo configure did not produce .ambuild2\vars
+            echo ERROR: configure did not produce .ambuild2\vars
             exit /b 1
           )
+          echo Configure OK - .ambuild2\vars exists
 
-      - name: Build
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
         working-directory: dodhooks/build
         run: ambuild
+        shell: bash
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        working-directory: dodhooks/build
+        run: ambuild
+        shell: pwsh
+
+      - name: Show build output (debug)
+        if: always()
+        working-directory: dodhooks/build
+        run: |
+          echo "=== Build directory contents ==="
+          ls -la
+          if [ -d "package" ]; then echo "=== Package contents ==="; ls -la package/; fi
+          if [ -d ".ambuild2" ]; then echo "=== .ambuild2 contents ==="; ls -la .ambuild2/; fi
+        shell: bash
+        if: runner.os == 'Linux'
+
+      - name: Show build output (debug, Windows)
+        if: always() && runner.os == 'Windows'
+        working-directory: dodhooks/build
+        run: |
+          echo "=== Build directory contents ==="
+          Get-ChildItem -Force
+          if (Test-Path "package") { echo "=== Package contents ==="; Get-ChildItem package -Force }
+          if (Test-Path ".ambuild2") { echo "=== .ambuild2 contents ==="; Get-ChildItem .ambuild2 -Force }
+        shell: pwsh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -179,6 +231,8 @@ jobs:
           cd artifacts
           for d in dodhooks-*; do zip -r "../$d.zip" "$d"; done
           cd ..
+          ls -la *.zip
+        shell: bash
       - uses: softprops/action-gh-release@v2
         with:
           files: dodhooks-*.zip
