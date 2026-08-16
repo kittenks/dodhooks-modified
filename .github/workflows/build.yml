@@ -15,6 +15,7 @@ env:
   MMSOURCE_BRANCH: "1.12-dev"
   HL2SDK_DODS_BRANCH: "dods"
   PYTHON_VERSION: "3.11"
+  AMBUILD_REF: "2.2"
 
 jobs:
   build:
@@ -73,11 +74,11 @@ jobs:
           ref: ${{ env.HL2SDK_DODS_BRANCH }}
           path: hl2sdk-dods
 
-      - name: Checkout AMBuild
+      - name: Checkout AMBuild 2.2
         uses: actions/checkout@v4
         with:
           repository: alliedmodders/ambuild
-          ref: master
+          ref: ${{ env.AMBUILD_REF }}
           path: ambuild
 
       - name: Set up Python
@@ -85,7 +86,6 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # ✅ 核心修复：纯 Python 包用 setup.py install，不走 pip wheel 构建
       - name: Install AMBuild (Linux)
         if: runner.os == 'Linux'
         run: |
