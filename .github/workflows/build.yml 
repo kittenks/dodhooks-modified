@@ -1,123 +1,167 @@
+yaml
+
 name: Build
 
 on:
-  push:
-    branches: [main, master, sm-1.12]
-    tags: ["v*"]
-  pull_request:
-  workflow_dispatch:
+
+push:
+
+branches:
+
+main
+
+master
+pull_request:
+branches:
+
+'*'
 
 permissions:
-  contents: write
+
+contents: read
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-22.04
-            arch: x86_64
-            cc: gcc
-            cxx: g++
-            msvc_arch: ""
-          - os: windows-2022
-            arch: x86_64
-            cc: cl
-            cxx: cl
-            msvc_arch: x64
 
-    runs-on: ${{ matrix.os }}
+build:
 
-    steps:
-      - name: Checkout dodhooks
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          path: dodhooks
+name: Build ({{ matrix.os }},{{ matrix.arch }})
 
-      - name: Checkout SourceMod
-        uses: actions/checkout@v4
-        with:
-          repository: alliedmodders/sourcemod
-          ref: 1.12-dev
-          path: sourcemod
+runs-on: ${{ matrix.os }}
 
-      - name: Checkout MetaMod:Source
-        uses: actions/checkout@v4
-        with:
-          repository: alliedmodders/metamod-source
-          ref: 1.11-dev
-          path: mmsource
+strategy:
 
-      - name: Checkout hl2sdk-dods
-        uses: actions/checkout@v4
-        with:
-          repository: alliedmodders/hl2sdk
-          ref: dods
-          path: hl2sdk-dods
+fail-fast: false
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
+matrix:
 
-      - name: Install AMBuild 2.2.0
-        run: pip install "AMBuild==2.2.0"
+include:
 
-      - name: Install Linux build deps
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc g++ libc6-dev
+os: ubuntu-22.04
+arch: x86_64
+cc: gcc
+cxx: g++
+msvc_arch: ""
 
-      - name: Setup MSVC
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: ${{ matrix.msvc_arch }}
+os: windows-2022
+arch: x86_64
+cc: cl
+cxx: cl
+msvc_arch: x64
 
-      - name: Configure (Linux)
-        if: runner.os == 'Linux'
-        working-directory: dodhooks
-        env:
-          CC: ${{ matrix.cc }}
-          CXX: ${{ matrix.cxx }}
-        run: |
-          rm -rf build
-          mkdir build && cd build
-          python3 ../configure.py \
-            --targets=${{ matrix.arch }} \
-            --enable-optimize \
-            --sm-path=$GITHUB_WORKSPACE/sourcemod \
-            --mms-path=$GITHUB_WORKSPACE/mmsource \
-            --hl2sdk-root=$GITHUB_WORKSPACE \
-            --sdks=dod
+steps:
 
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
-        working-directory: dodhooks
-        shell: cmd
-        run: |
-          if exist build rmdir /s /q build
-          mkdir build && cd build
-          python ..\configure.py ^
-            --targets=${{ matrix.arch }} ^
-            --enable-optimize ^
-            --sm-path=%GITHUB_WORKSPACE%\sourcemod ^
-            --mms-path=%GITHUB_WORKSPACE%\mmsource ^
-            --hl2sdk-root=%GITHUB_WORKSPACE% ^
-            --sdks=dod
+# 1. 检出当前仓库代码
 
-      - name: Build
-        working-directory: dodhooks/build
-        run: ambuild
+name: Checkout source
+uses: actions/checkout@v4
+with:
+submodules: recursive
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: dodhooks-${{ runner.os }}-${{ matrix.arch }}
-          path: dodhooks/build/package/*
+# 2. 检出 SourceMod (供 configure 使用)
+
+name: Checkout SourceMod
+uses: actions/checkout@v4
+with:
+repository: alliedmodders/sourcemod
+ref: 1.12-dev
+path: sourcemod
+
+# 3. 检出 MetaMod:Source (供 configure 使用)
+
+name: Checkout MetaMod:Source
+uses: actions/checkout@v4
+with:
+repository: alliedmodders/metamod-source
+ref: 1.11-dev
+path: mmsource
+
+# 4. 检出 HL2SDK (DoD S)
+
+name: Checkout hl2sdk-dods
+uses: actions/checkout@v4
+with:
+repository: alliedmodders/hl2sdk
+ref: dods
+path: hl2sdk-dods
+
+# 5. 设置 Python 3.11
+
+name: Set up Python
+uses: actions/setup-python@v5
+with:
+python-version: "3.11"
+
+# 6. 【核心修复】安装特定版本的 AMBuild
+
+# 包名必须是大写的 AMBuild，且锁定 2.2.0 版本以避免 API 变动
+
+name: Install AMBuild 2.2.0
+run: pip install "AMBuild==2.2.0"
+
+# 7. Linux 额外依赖
+
+name: Install Linux deps
+if: runner.os == 'Linux'
+run: sudo apt-get update && sudo apt-get install -y clang libc6-dev
+
+# 8. 设置 MSVC (仅 Windows)
+
+name: Setup MSVC
+if: runner.os == 'Windows'
+uses: ilammy/msvc-dev-cmd@v1
+with:
+arch: ${{ matrix.msvc_arch }}
+
+# 9. Linux 配置
+
+name: Configure (Linux)
+if: runner.os == 'Linux'
+working-directory: src
+env:
+CC: ${{ matrix.cc }}
+CXX: ${{ matrix.cxx }}
+run: |
+rm -rf build
+mkdir build && cd build
+python3 ../configure.py \
+--targets=${{ matrix.arch }} \
+--enable-optimize \
+--sm-path=$GITHUB_WORKSPACE/sourcemod \
+--mms-path=$GITHUB_WORKSPACE/mmsource \
+--hl2sdk-root=$GITHUB_WORKSPACE \
+--sdks=dod
+
+# 10. Windows 配置
+
+name: Configure (Windows)
+if: runner.os == 'Windows'
+working-directory: src
+shell: cmd
+run: |
+if exist build rmdir /s /q build
+mkdir build && cd build
+python ../configure.py ^
+--targets=${{ matrix.arch }} ^
+--enable-optimize ^
+--sm-path=%GITHUB_WORKSPACE%\sourcemod ^
+--mms-path=%GITHUB_WORKSPACE%\mmsource ^
+--hl2sdk-root=%GITHUB_WORKSPACE% ^
+--sdks=dod
+
+# 11. 编译
+
+name: Build
+working-directory: src/build
+run: ambuild
+
+# 12. 上传产物
+
+name: Upload artifact
+uses: actions/upload-artifact@v4
+with:
+name: dodhooks-{{ runner.os }}-{{ matrix.arch }}
+path: src/build/package/*
+if-no-files-found: error          path: dodhooks/build/package/*
           if-no-files-found: error
 
   release:
