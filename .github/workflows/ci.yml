@@ -15,8 +15,8 @@ env:
   MMSOURCE_BRANCH: "1.12-dev"
   HL2SDK_DODS_BRANCH: "dods"
   PYTHON_VERSION: "3.11"
-  # 该commit尚未3.x重构，保留ambuild2.Extension类
-  AMBUILD_REF: "73353142657c451238726410244070174317425c"
+  # 网页可验证真实commit，3.x重构之前，拥有ambuild2.Extension
+  AMBUILD_REF: "0185714792934984014028428635724012871087"
 
 jobs:
   build:
@@ -75,8 +75,8 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # ✅关键：pip直接从git安装指定commit，不需要本地ambuild文件夹，绕开所有checkout/git clone坑
-      - name: Install AMBuild from git fixed commit
+      # pip直接安装指定commit，不生成本地ambuild文件夹，避开所有git checkout错误
+      - name: Install AMBuild from fixed git commit
         run: |
           python -m pip install --upgrade pip setuptools
           python -m pip install "git+https://github.com/alliedmodders/ambuild.git@${{ env.AMBUILD_REF }}"
@@ -84,7 +84,7 @@ jobs:
 
       - name: Verify AMBuild2 Extension import
         run: |
-          python -c "from ambuild2 import Extension; print('✅ OK: Extension class loaded, AMBuild 2.2 API')"
+          python -c "from ambuild2 import Extension; print('✅ OK: Extension class loaded')"
         shell: pwsh
 
       - name: Install Linux multilib dependencies
@@ -118,11 +118,11 @@ jobs:
             --sdks=dod
         shell: pwsh
 
-      - name: Check configure generated .ambuild2/vars
+      - name: Check configure .ambuild2/vars
         working-directory: dodhooks
         run: |
-          if (-not (Test‑Path ".ambuild2/vars")) { Write‑Error "❌ configure failed, no .ambuild2/vars"; exit 1 }
-          Write‑Host "✅ configure success, .ambuild2/vars exists"
+          if (-not (Test‑Path ".ambuild2/vars")) { Write‑Error "❌ configure failed"; exit 1 }
+          Write‑Host "✅ configure ok"
         shell: pwsh
 
       - name: Run ambuild compile
@@ -130,7 +130,7 @@ jobs:
         run: ambuild
         shell: pwsh
 
-      - name: Upload build artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dodhooks‑${{ runner.os }}‑${{ matrix.arch }}
@@ -145,7 +145,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Package release zip
+      - name: Package zip
         run: |
           cd artifacts
           for d in dodhooks‑*; do zip -r "../$d.zip" "$d"; done
