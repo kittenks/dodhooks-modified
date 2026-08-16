@@ -1,7 +1,11 @@
-// DoDHooks Gamedata Configuration
-// Updated for SourceMod 1.12 / 1.13
-// Based on DNA-styx/dodhooks gamedata with fixes
-// Supports Windows (x86/x64) and Linux (x86/x86_64)
+/**
+ * DoDHooks Gamedata
+ * 
+ * Updated for Day of Defeat: Source (latest Steam version)
+ * Compatible with SourceMod 1.12 / 1.13
+ * 
+ * Maintainers: DNA-styx, Andersso, ChesterSmitty
+ */
 
 "Games"
 {
@@ -9,7 +13,10 @@
     {
         "Offsets"
         {
-            // Offset of g_pObjectiveResource pointer from CreateStandardEntities
+            /**
+             * On Windows, the offset from the CreateStandardEntities function
+             * to where g_pObjectiveResource is referenced.
+             */
             "g_pObjectiveResource"
             {
                 "windows" "67"
@@ -18,102 +25,124 @@
 
         "Signatures"
         {
-            // CDODGameRules::CreateStandardEntities - used to find g_pObjectiveResource on Windows
+            /**
+             * Signature for CreateStandardEntities on Windows.
+             * Used to locate g_pObjectiveResource indirectly.
+             */
             "CreateStandardEntities"
             {
-                "library" "server"
-                "windows" "\x6A\x00\x68\x2A\x2A\x2A\x2A\x68\x2A\x2A\x2A\x2A\x68\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x6A\x00\x68\x2A\x2A\x2A\x2A\x68\x2A\x2A\x2A\x2A\x68\x2A\x2A\x2A\x2A\xA3\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x6A\x00\x68\x2A\x2A\x2A\x2A\x68\x2A\x2A\x2A\x2A\x68\x2A\x2A\x2A\x2A\xA3\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x83\xC4\x30\xC3"
-                "linux"   "@CreateStandardEntities"
-                "linux64" "@CreateStandardEntities"
+                "library"    "server"
+                "windows"    "\x6A\x00\x68\x2A\x2A\x2A\x2A\x68\x2A\x2A\x2A\x2A\x68\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x6A\x00\x68\x2A\x2A\x2A\x2A\x68\x2A\x2A\x2A\x2A\x68\x2A\x2A\x2A\x2A\xA3\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x6A\x00\x68\x2A\x2A\x2A\x2A\x68\x2A\x2A\x2A\x2A\x68\x2A\x2A\x2A\x2A\xA3\x2A\x2A\x2A\x2A\xE8\x2A\x2A\x2A\x2A\x83\xC4\x30\xC3"
             }
 
-            // g_pObjectiveResource symbol - used on Linux
+            /**
+             * Direct symbol for g_pObjectiveResource on Linux.
+             */
             "g_pObjectiveResource"
             {
-                "library" "server"
-                "linux"   "@g_pObjectiveResource"
-                "linux64" "@g_pObjectiveResource"
+                "library"    "server"
+                "linux"      "@g_pObjectiveResource"
             }
 
-            // CDODPlayer::VoiceCommand(int)
+            /**
+             * CDODPlayer::VoiceCommand(int)
+             * Called when a player uses a voice command (e.g. "Move out!", "Fire in the hole!")
+             */
             "VoiceCommand"
             {
-                "library" "server"
-                "windows" "\x55\x8B\xEC\x81\xEC\xB0\x00\x00\x00\x53\x8B\xD9\x8B\x03"
-                "linux"   "@_ZN10CDODPlayer12VoiceCommandEi"
-                "linux64" "@_ZN10CDODPlayer12VoiceCommandEi"
+                "library"    "server"
+                "windows"    "\x55\x8B\xEC\x81\xEC\xB0\x00\x00\x00\x53\x8B\xD9\x8B\x03"
+                "linux"      "@_ZN10CDODPlayer12VoiceCommandEi"
             }
 
-            // CDODPlayer::HandleCommand_JoinClass(int)
+            /**
+             * CDODPlayer::HandleCommand_JoinClass(int)
+             * Called when a player selects a class (Rifleman, Assault, etc.)
+             */
             "JoinClass"
             {
-                "library" "server"
-                "windows" "\x55\x8B\xEC\x53\x56\x57\x8B\xF9\xE8\x2A\x2A\x2A\x2A\x83\xF8\x01"
-                "linux"   "@_ZN10CDODPlayer23HandleCommand_JoinClassEi"
-                "linux64" "@_ZN10CDODPlayer23HandleCommand_JoinClassEi"
+                "library"    "server"
+                "windows"    "\x55\x8B\xEC\x53\x56\x57\x8B\xF9\xE8\x2A\x2A\x2A\x2A\x83\xF8\x01"
+                "linux"      "@_ZN10CDODPlayer23HandleCommand_JoinClassEi"
             }
 
-            // CDODPlayer::PopHelmet(Vector, Vector)
+            /**
+             * CDODPlayer::PopHelmet(Vector, Vector)
+             * Called when a helmet is popped off a player's head.
+             */
             "PopHelmet"
             {
-                "library" "server"
-                "windows" "\x55\x8B\xEC\x53\x56\x57\x8B\xF9\x8D\x8F\x2A\x2A\x2A\x2A"
-                "linux"   "@_ZN10CDODPlayer9PopHelmetE6VectorS0_"
-                "linux64" "@_ZN10CDODPlayer9PopHelmetE6VectorS0_"
+                "library"    "server"
+                "windows"    "\x55\x8B\xEC\x53\x56\x57\x8B\xF9\x8D\x8F\x2A\x2A\x2A\x2A"
+                "linux"      "@_ZN10CDODPlayer9PopHelmetE6VectorS0_"
             }
 
-            // CDODGameRules::SetWinningTeam(int)
+            /**
+             * CDODGameRules::SetWinningTeam(int)
+             * Called when the game determines the winning team.
+             */
             "SetWinningTeam"
             {
-                "library" "server"
-                "windows" "\x55\x8B\xEC\x8B\x0D\x2A\x2A\x2A\x2A\x81\xEC\x80\x00\x00\x00"
-                "linux"   "@_ZN13CDODGameRules14SetWinningTeamEi"
-                "linux64" "@_ZN13CDODGameRules14SetWinningTeamEi"
+                "library"    "server"
+                "windows"    "\x55\x8B\xEC\x8B\x0D\x2A\x2A\x2A\x2A\x81\xEC\x80\x00\x00\x00"
+                "linux"      "@_ZN13CDODGameRules14SetWinningTeamEi"
             }
 
-            // CDODPlayer::DODRespawn()
+            /**
+             * CDODPlayer::DODRespawn()
+             * Handles player respawn logic.
+             */
             "DODRespawn"
             {
-                "library" "server"
-                "windows" "\x56\x8B\xF1\x8B\x06\x8B\x80\x2A\x2A\x2A\x2A\xFF\xD0\x84\xC0\x74\x2A\x80\xBE\x2A\x2A\x2A\x2A\x00\x8D\x8E\x2A\x2A\x2A\x2A"
-                "linux"   "@_ZN10CDODPlayer10DODRespawnEv"
-                "linux64" "@_ZN10CDODPlayer10DODRespawnEv"
+                "library"    "server"
+                "windows"    "\x56\x8B\xF1\x8B\x06\x8B\x80\x2A\x2A\x2A\x2A\xFF\xD0\x84\xC0\x74\x2A\x80\xBE\x2A\x2A\x2A\x2A\x00\x8D\x8E\x2A\x2A\x2A\x2A"
+                "linux"      "@_ZN10CDODPlayer10DODRespawnEv"
             }
 
-            // CDODGameRules::AddWaveTime(int, float)
+            /**
+             * CDODGameRules::AddWaveTime(int, float)
+             * Adds time to the wave timer for a team.
+             */
             "AddWaveTime"
             {
-                "library" "server"
-                "windows" "\x55\x8B\xEC\x8B\x45\x2A\x83\xEC\x08\x56\x8B\xF1"
-                "linux"   "@_ZN13CDODGameRules11AddWaveTimeEif"
-                "linux64" "@_ZN13CDODGameRules11AddWaveTimeEif"
+                "library"    "server"
+                "windows"    "\x55\x8B\xEC\x8B\x45\x2A\x83\xEC\x08\x56\x8B\xF1"
+                "linux"      "@_ZN13CDODGameRules11AddWaveTimeEif"
             }
 
-            // CDODGameRules::State_Enter(DODRoundState)
+            /**
+             * CDODGameRules::State_Enter(DODRoundState)
+             * Called when the round state changes.
+             */
             "RoundState"
             {
-                "library" "server"
-                "windows" "\x55\x8B\xEC\x56\x8B\xF1\x57\x8B\x7D\x2A\x39\xBE\x2A\x2A\x2A\x2A"
-                "linux"   "@_ZN13CDODGameRules11State_EnterE13DODRoundState"
-                "linux64" "@_ZN13CDODGameRules11State_EnterE13DODRoundState"
+                "library"    "server"
+                "windows"    "\x55\x8B\xEC\x56\x8B\xF1\x57\x8B\x7D\x2A\x39\xBE\x2A\x2A\x2A\x2A"
+                /* alternative: "\x53\x56\x8B\xD9\xE8\x2A\x2A\x2A\x2A\xBE\x01\x00\x00\x00" */
+                "linux"      "@_ZN13CDODGameRules11State_EnterE13DODRoundState"
             }
 
-            // CDODPlayer::State_Enter(DODPlayerState)
+            /**
+             * CDODPlayer::State_Enter(DODPlayerState)
+             * Called when a player's state changes.
+             */
             "PlayerState"
             {
-                "library" "server"
-                "windows" "\x55\x8B\xEC\x53\x56\x8B\xF1\x57\x8B\x7D\x2A\x8D\x9E\x2A\x2A\x2A\x2A"
-                "linux"   "@_ZN10CDODPlayer11State_EnterE14DODPlayerState"
-                "linux64" "@_ZN10CDODPlayer11State_EnterE14DODPlayerState"
+                "library"    "server"
+                "windows"    "\x55\x8B\xEC\x53\x56\x8B\xF1\x57\x8B\x7D\x2A\x8D\x9E\x2A\x2A\x2A\x2A"
+                "linux"      "@_ZN10CDODPlayer11State_EnterE14DODPlayerState"
             }
 
-            // CDODBombTarget::State_Enter(BombTargetState)
+            /**
+             * CDODBombTarget::State_Enter(BombTargetState)
+             * Called when a bomb target's state changes.
+             */
             "BombTargetState"
             {
-                "library" "server"
-                "windows" "\x55\x8B\xEC\xA1\x2A\x2A\x2A\x2A\x53\x56\x57\x8B\xF9"
-                "linux"   "@_ZN14CDODBombTarget11State_EnterE15BombTargetState"
-                "linux64" "@_ZN14CDODBombTarget11State_EnterE15BombTargetState"
+                "library"    "server"
+                "windows"    "\x55\x8B\xEC\xA1\x2A\x2A\x2A\x2A\x53\x56\x57\x8B\xF9"
+                /* alternative: "\x55\x8B\xEC\x53\x56\x8B\xF1\x57\x8B\x8E\x2A\x2A\x2A\x2A" */
+                "linux"      "@_ZN14CDODBombTarget11State_EnterE15BombTargetState"
             }
         }
     }
