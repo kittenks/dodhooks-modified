@@ -1,54 +1,59 @@
 # vim: set ts=8 sts=2 sw=2 tw=99 et ft=python:
 """
-DoDHooks - Package Script
-Updated for SourceMod 1.12 / 1.13
+DODHooks - PackageScript
+
+Packages the compiled extension into the proper addons/sourcemod/ directory
+structure, with x64 extensions placed under an x64/ subfolder.
 """
 
 import os
 
-# Output folder for packaged files
+# Set the build output folder
 builder.SetBuildFolder('package')
 
-# Folders to create in the package
+# 64-bit extensions live under an x64/ subfolder (SourceMod 1.12+ convention)
+# 32-bit extensions sit directly in extensions/
+if builder.cxx.target.arch == 'x86_64':
+    ext_folder = 'addons/sourcemod/extensions/x64'
+else:
+    ext_folder = 'addons/sourcemod/extensions'
+
 folder_list = [
-    'addons/sourcemod/extensions',
-    'addons/sourcemod/scripting/include',
+    ext_folder,
     'addons/sourcemod/gamedata',
-    'addons/sourcemod/configs',
+    'addons/sourcemod/scripting/include',
 ]
 
-# Create folder map
+# Create the distribution folder hierarchy
 folder_map = {}
 for folder in folder_list:
     norm_folder = os.path.normpath(folder)
     folder_map[folder] = builder.AddFolder(norm_folder)
 
-# ---- Copy SourcePawn include file ----
-include_src = os.path.join(builder.sourcePath, 'sourcemod', 'scripting', 'include', 'dodhooks.inc')
-include_dest = folder_map['addons/sourcemod/scripting/include']
-if os.path.isfile(include_src):
-    builder.AddCopy(include_src, include_dest)
+# ---------------------------------------------------------------------------
+# Copy extension binaries
+# ---------------------------------------------------------------------------
+for extension in DODHooks.extensions:
+    builder.AddCopy(extension.binary, folder_map[ext_folder])
 
-# ---- Copy gamedata files ----
-gamedata_dir = os.path.join(builder.sourcePath, 'sourcemod', 'gamedata')
-if os.path.isdir(gamedata_dir):
-    for fname in os.listdir(gamedata_dir):
-        if fname.endswith('.txt'):
-            src = os.path.join(gamedata_dir, fname)
-            builder.AddCopy(src, folder_map['addons/sourcemod/gamedata'])
+# ---------------------------------------------------------------------------
+# Copy gamedata
+# ---------------------------------------------------------------------------
+def CopyFiles(src, dest, files):
+    if not dest:
+        dest = src
+    dest_entry = folder_map[dest]
+    for source_file in files:
+        source_path = os.path.join(builder.sourcePath, src, source_file)
+        if os.path.exists(source_path):
+            builder.AddCopy(source_path, dest_entry)
 
-# ---- Copy config files (if any) ----
-configs_dir = os.path.join(builder.sourcePath, 'sourcemod', 'configs')
-if os.path.isdir(configs_dir):
-    for fname in os.listdir(configs_dir):
-        src = os.path.join(configs_dir, fname)
-        builder.AddCopy(src, folder_map['addons/sourcemod/configs'])
+# Gamedata
+CopyFiles('sourcemod/gamedata', 'addons/sourcemod/gamedata', [
+    'dodhooks.txt',
+])
 
-# ---- Copy compiled extension binaries ----
-for cxx_task in Extension.extensions:
-    builder.AddCopy(cxx_task.binary, folder_map['addons/sourcemod/extensions'])
-
-# ---- Create autoload file ----
-# The autoload file tells SourceMod to load this extension automatically
-autoload_content = "# DoDHooks autoload\n"
-# The actual file will be created during packaging
+# Include files (if any .inc files exist)
+# CopyFiles('sourcemod/scripting/include', 'addons/sourcemod/scripting/include', [
+#    'dodhooks.inc',
+# ])

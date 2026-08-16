@@ -1,73 +1,54 @@
+/**
+ * vim: set ts=4 :
+ * ======================================================
+ * DODHooks - Native function declarations
+ * ======================================================
+ *
+ * GPLv2 License
+ */
+
 #ifndef _INCLUDE_SOURCEMOD_EXTENSION_NATIVES_H_
 #define _INCLUDE_SOURCEMOD_EXTENSION_NATIVES_H_
 
 #include "extension.h"
 
-// Maximum control points
-#define MAX_CONTROL_POINTS 8
+/**
+ * @brief Registers all natives with SourceMod.
+ * Called from SDK_OnAllLoaded.
+ */
 
-// Forward declarations for native functions
+/* Player class natives */
 cell_t Native_GetPlayerClass(IPluginContext *pContext, const cell_t *Params);
 cell_t Native_SetPlayerClass(IPluginContext *pContext, const cell_t *Params);
 cell_t Native_GetDesiredPlayerClass(IPluginContext *pContext, const cell_t *Params);
 cell_t Native_SetDesiredPlayerClass(IPluginContext *pContext, const cell_t *Params);
+
+/* Helmet natives */
 cell_t Native_PopHelmet(IPluginContext *pContext, const cell_t *Params);
+
+/* Control point / objective natives */
 cell_t Native_SetNumControlPoints(IPluginContext *pContext, const cell_t *Params);
 cell_t Native_PrecacheCPIcon(IPluginContext *pContext, const cell_t *Params);
 cell_t Native_SetCPIcons(IPluginContext *pContext, const cell_t *Params);
 cell_t Native_SetCPVisible(IPluginContext *pContext, const cell_t *Params);
+
+/* Timer natives */
 cell_t Native_PauseTimer(IPluginContext *pContext, const cell_t *Params);
 cell_t Native_ResumeTimer(IPluginContext *pContext, const cell_t *Params);
 cell_t Native_SetTimeRemaining(IPluginContext *pContext, const cell_t *Params);
 cell_t Native_GetTimeRemaining(IPluginContext *pContext, const cell_t *Params);
+
+/* Game rules natives */
 cell_t Native_RespawnPlayer(IPluginContext *pContext, const cell_t *Params);
 cell_t Native_AddWaveTime(IPluginContext *pContext, const cell_t *Params);
 cell_t Native_SetWinningTeam(IPluginContext *pContext, const cell_t *Params);
 cell_t Native_SetRoundState(IPluginContext *pContext, const cell_t *Params);
 cell_t Native_SetPlayerState(IPluginContext *pContext, const cell_t *Params);
 cell_t Native_SetBombTargetState(IPluginContext *pContext, const cell_t *Params);
-cell_t Native_GetPlatform(IPluginContext *pContext, const cell_t *Params);
 
-// REGISTER_NATIVE_ADDR helper macro
-// This macro resolves a function address from gamedata and creates a call wrapper
-#define REGISTER_NATIVE_ADDR(name, code) \
-    do { \
-        if (!pWrapper) \
-        { \
-            void *pAddress = NULL; \
-            if (!g_pGameConf->GetMemSig(name, &pAddress) || !pAddress) \
-            { \
-                META_CONPRINTF("[DoDHooks] Warning: Failed to find signature for %s\n", name); \
-                return pContext->ThrowNativeError("Failed to find %s signature", name); \
-            } \
-            code \
-        } \
-    } while (0)
-
-// Native function table
-static const sp_nativeinfo_t g_Natives[] =
-{
-    {"DOD_GetPlayerClass",         Native_GetPlayerClass},
-    {"DOD_SetPlayerClass",         Native_SetPlayerClass},
-    {"DOD_GetDesiredPlayerClass",  Native_GetDesiredPlayerClass},
-    {"DOD_SetDesiredPlayerClass",  Native_SetDesiredPlayerClass},
-    {"DOD_PopHelmet",             Native_PopHelmet},
-    {"DOD_SetNumControlPoints",    Native_SetNumControlPoints},
-    {"DOD_PrecacheCPIcon",        Native_PrecacheCPIcon},
-    {"DOD_SetCPIcons",            Native_SetCPIcons},
-    {"DOD_SetCPVisible",          Native_SetCPVisible},
-    {"DOD_PauseTimer",            Native_PauseTimer},
-    {"DOD_ResumeTimer",           Native_ResumeTimer},
-    {"DOD_SetTimeRemaining",       Native_SetTimeRemaining},
-    {"DOD_GetTimeRemaining",       Native_GetTimeRemaining},
-    {"DOD_RespawnPlayer",         Native_RespawnPlayer},
-    {"DOD_AddWaveTime",           Native_AddWaveTime},
-    {"DOD_SetWinningTeam",        Native_SetWinningTeam},
-    {"DOD_SetRoundState",         Native_SetRoundState},
-    {"DOD_SetPlayerState",        Native_SetPlayerState},
-    {"DOD_SetBombTargetState",    Native_SetBombTargetState},
-    {"DODHooks_GetPlatform",       Native_GetPlatform},
-    {NULL, NULL},
-};
+/**
+ * Native function table - must match dodhooks.inc
+ */
+extern const sp_nativeinfo_t g_Natives[];
 
 #endif // _INCLUDE_SOURCEMOD_EXTENSION_NATIVES_H_

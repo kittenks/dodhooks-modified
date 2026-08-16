@@ -1,173 +1,259 @@
-# DoDHooks
+# DODHooks
 
-Day of Defeat: Source 的 SourceMod 扩展，提供钩子（Hooks）和原生函数（Natives），
-兼容 **SourceMod 1.12 / 1.13**，支持 **Windows + Linux × x86 + x86_64**。
+> **SourceMod Extension with Detours & Natives for Day of Defeat: Source**
 
-## 功能
+[![CI](https://github.com/DNA-styx/dodhooks/workflows/CI/badge.svg)](https://github.com/DNA-styx/dodhooks/actions)
 
-### Detour Hooks（检测/拦截）
-- `OnVoiceCommand` — 语音命令
-- `OnJoinClass` — 职业切换
-- `OnPopHelmet` — 头盔弹出
-- `OnPlayerRespawn` — 重生
-- `OnAddWaveTime` — 波次时间
-- `OnSetWinningTeam` — 胜利队伍
-- `OnEnterRoundState` — 回合状态
-- `OnEnterPlayerState` — 玩家状态
-- `OnEnterBombTargetState` — 炸弹目标状态
+## About
 
-### Natives（插件可调用的函数）
-- 玩家职业查询/设置
-- 控制点状态查询/修改
-- 炸弹目标查询
-- 计时器工具
-- 平台检测 `DODHooks_GetPlatform()`
+DODHooks is a SourceMod extension for **Day of Defeat: Source** that provides:
 
-## 目录结构
+- **Detours** (hooks) for key game functions: voice commands, class joining, helmet popping, respawning, wave time, winning team, round state, player state, and bomb target state.
+- **Natives** for controlling player classes, control point icons, round timers, and game rules from SourcePawn plugins.
+- **Forwards** (hooks) that allow plugins to intercept and modify game events.
 
-```
-dodhooks/
-├── .github/workflows/build.yml   # GitHub Actions CI
-├── docker/
-│   ├── Dockerfile.linux         # Docker 编译环境
-│   ├── Dockerfile.windows      # Docker Windows 交叉编译
-│   └── docker-compose.yml      # 多架构编排
-├── scripts/
-│   ├── build-linux.sh          # Linux 本地编译
-│   ├── build-windows.bat       # Windows 本地编译
-│   ├── docker-build.sh        # Docker 容器内编译
-│   └── package-release.sh     # 一键打包发布
-├── sourcemod/
-│   ├── gamedata/dodhooks.txt  # 游戏数据签名
-│   ├── scripting/include/dodhooks.inc   # SourcePawn 头文件
-│   └── scripting/dodhooks_example.sp  # 示例插件
-├── extension.cpp / .h          # 扩展主逻辑
-├── natives.cpp / .h            # Native 函数实现
-├── vglobals.cpp / .h           # Valve 全局变量
-├── smsdk_config.h             # SDK 配置
-├── AMBuildScript              # AMBuild 构建脚本
-├── AMBuilder                  # AMBuild 构建规则
-├── configure.py               # 配置脚本
-└── README.md
+This version is a maintained fork that:
+
+- Supports **SourceMod 1.12 and 1.13**
+- Supports **Metamod:Source 1.12 and 1.13**
+- Compiles for **both 32-bit (x86) and 64-bit (x86_64)** architectures
+- Works on **Windows and Linux**
+- Uses the **latest AMBuild 2.x** build system
+- Fixes server crash issues present in older versions
+- Uses modern C++17 compiler flags
+
+## Requirements
+
+| Dependency | Version | Notes |
+|------------|---------|-------|
+| SourceMod | 1.12 / 1.13 | Source code required for building |
+| Metamod:Source | 1.12 / 1.13 | Source code required for building |
+| AMBuild | 2.2+ | Python-based build system |
+| Python | 3.8+ | Required for AMBuild |
+| Compiler | GCC 9+ / Clang 10+ / MSVC 2019+ | C++17 support required |
+
+## Build Dependencies
+
+### Linux
+```bash
+# Debian/Ubuntu
+sudo apt-get update
+sudo apt-get install -y build-essential clang-22 python3 python3-pip git
+
+# Install AMBuild
+pip3 install --upgrade git+https://github.com/alliedmodders/ambuild.git
 ```
 
-## 快速开始（编译）
+### Windows
+```powershell
+# Install Python 3.12+ from python.org
+# Install Visual Studio 2019+ (Community Edition is fine)
+# Install Git from git-scm.com
 
-### 方式一：GitHub Actions（推荐）
+# Install AMBuild
+python -m pip install --upgrade git+https://github.com/alliedmodders/ambuild.git
+```
 
-推送代码后自动编译，无需本地环境：
+## Building
+
+### Quick Start (Linux)
 
 ```bash
-git push origin main
+# Clone the repository
+git clone https://github.com/DNA-styx/dodhooks.git
+cd dodhooks
+
+# Clone dependencies
+git clone --depth 1 --recurse-submodules -b 1.12-dev https://github.com/alliedmodders/metamod-source.git mmsource
+git clone --depth 1 --recurse-submodules -b 1.12-dev https://github.com/alliedmodders/sourcemod.git sourcemod
+
+# Configure (32-bit)
+mkdir build && cd build
+python3 ../configure.py \
+    --sm-path ../sourcemod \
+    --mms-path ../mmsource \
+    --target x86 \
+    --enable-optimize
+
+# Build
+ambuild
+
+# Output will be in build/package/
 ```
 
-进入 GitHub → Actions 标签页，等待 4 个矩阵任务完成，下载 Artifacts。
-
-**打 Tag 自动发 Release：**
+### 64-bit Build (Linux)
 
 ```bash
-git tag v2.0.0
-git push origin v2.0.0
+mkdir build64 && cd build64
+python3 ../configure.py \
+    --sm-path ../sourcemod \
+    --mms-path ../mmsource \
+    --target x86_64 \
+    --enable-optimize
+ambuild
 ```
 
-### 方式二：Docker（本地一键编译）
+### Windows Build
+
+```powershell
+# Open "Developer Command Prompt for VS" or run vcvars32.bat
+
+git clone https://github.com/DNA-styx/dodhooks.git
+cd dodhooks
+
+git clone --depth 1 --recurse-submodules -b 1.12-dev https://github.com/alliedmodders/metamod-source.git mmsource
+git clone --depth 1 --recurse-submodules -b 1.12-dev https://github.com/alliedmodders/sourcemod.git sourcemod
+
+# 32-bit build
+mkdir build && cd build
+python ..\configure.py `
+    --sm-path ..\sourcemod `
+    --mms-path ..\mmsource `
+    --target x86 `
+    --enable-optimize
+ambuild
+
+# 64-bit build (use "x64 Native Tools Command Prompt")
+mkdir build64 && cd build64
+python ..\configure.py `
+    --sm-path ..\sourcemod `
+    --mms-path ..\mmsource `
+    --target x86_64 `
+    --enable-optimize
+ambuild
+```
+
+### Generate Visual Studio Project (Windows)
+
+```powershell
+python ..\configure.py `
+    --sm-path ..\sourcemod `
+    --mms-path ..\mmsource `
+    --target x86 `
+    --enable-optimize `
+    --gen=vs
+```
+
+## Docker Build
+
+A Dockerfile is provided for easy Linux builds:
 
 ```bash
-# 编译 x86_64
-docker build -f docker/Dockerfile.linux -t dodhooks-build .
-docker run --rm -v $(pwd):/workspace -e BUILD_ARCH=x86_64 dodhooks-build
+# Build the container
+docker build -t dodhooks-builder .
 
-# 编译 x86
-docker run --rm -v $(pwd):/workspace -e BUILD_ARCH=x86 dodhooks-build
+# 32-bit build
+docker run --rm -v $(pwd):/work -w /work dodhooks-builder \
+    bash -c "mkdir -p build && cd build && \
+    python3 ../configure.py --sm-path /sourcemod --mms-path /mmsource \
+    --target x86 --enable-optimize && ambuild"
+
+# 64-bit build
+docker run --rm -v $(pwd):/work -w /work dodhooks-builder \
+    bash -c "mkdir -p build && cd build && \
+    python3 ../configure.py --sm-path /sourcemod --mms-path /mmsource \
+    --target x86_64 --enable-optimize && ambuild"
 ```
 
-### 方式三：本地手动编译
-
-#### Linux
+Or with docker-compose:
 
 ```bash
-chmod +x scripts/build-linux.sh
-./scripts/build-linux.sh x86_64     # 或 x86
+# Build the image
+docker-compose build
+
+# 32-bit build
+docker-compose run --rm dodhooks-builder \
+    bash -c "mkdir -p build && cd build && \
+    python3 ../configure.py --sm-path /sourcemod --mms-path /mmsource \
+    --target x86 --enable-optimize && ambuild"
+
+# 64-bit build
+docker-compose run --rm dodhooks-builder \
+    bash -c "mkdir -p build && cd build && \
+    python3 ../configure.py --sm-path /sourcemod --mms-path /mmsource \
+    --target x86_64 --enable-optimize && ambuild"
 ```
 
-#### Windows
+## Installation
 
-```cmd
-scripts\build-windows.bat x86_64    :: 或 x86
-```
-
-需要：Python 3.11 + Visual Studio 2022 + Git。
-
-## 安装到服务器
-
-将编译产物解压后放到 `addons/sourcemod/` 对应目录：
+After building, copy the contents of `build/package/` to your game server's root directory:
 
 ```
-addons/sourcemod/
-├── extensions/
-│   └── dodhooks.ext.dll / dodhooks.ext.so
-├── gamedata/
-│   └── dodhooks.txt
-├── scripting/include/
-│   └── dodhooks.inc          (编译插件用)
-└── plugins/
-    └── dodhooks_example.smx (示例)
+addons/
+└── sourcemod/
+    ├── extensions/
+    │   ├── dodhooks.ext.dll        (Windows 32-bit)
+    │   ├── dodhooks.ext.so         (Linux 32-bit)
+    │   └── x64/
+    │       ├── dodhooks.ext.dll    (Windows 64-bit)
+    │       └── dodhooks.ext.so    (Linux 64-bit)
+    ├── gamedata/
+    │   └── dodhooks.txt
+    └── scripting/
+        └── include/
+            └── dodhooks.inc
 ```
 
-## 依赖版本（已验证）
+## Available Natives
 
-| 组件 | 版本 | 说明 |
-|------|------|------|
-| SourceMod | 1.12-dev | 兼容 1.13 |
-| Metamod:Source | 1.12-dev | 兼容 1.13 |
-| hl2sdk | dods 分支 | DoD:S SDK |
-| AMBuild | master (源码安装) | 从 GitHub checkout 安装 |
-| Python | 3.11 | 3.12+ 未验证 |
-| 编译器 | GCC/Clang/MSVC 2022 | — |
+| Native | Description |
+|--------|-------------|
+| `DOD_GetPlayerClass(client)` | Get a player's current class |
+| `DOD_SetPlayerClass(client, class)` | Set a player's current class |
+| `DOD_GetDesiredPlayerClass(client)` | Get desired player class |
+| `DOD_SetDesiredPlayerClass(client, class)` | Set desired player class |
+| `DOD_PopHelmet(client, velocity[3], origin[3])` | Force a helmet to pop off |
+| `DOD_SetNumControlPoints(num)` | Set number of control points |
+| `DOD_PrecacheCPIcon(material)` | Precache a CP icon material |
+| `DOD_SetCPIcons(index, ...)` | Set icons for a control point |
+| `DOD_SetCPVisible(index, visible)` | Show/hide a control point |
+| `DOD_PauseTimer(timer)` | Pause a round timer |
+| `DOD_ResumeTimer(timer)` | Resume a round timer |
+| `DOD_SetTimeRemaining(timer, seconds)` | Set timer remaining time |
+| `DOD_GetTimeRemaining(timer)` | Get timer remaining time |
+| `DOD_RespawnPlayer(client, useClass)` | Force respawn a player |
+| `DOD_AddWaveTime(team, delay)` | Add wave time for a team |
+| `DOD_SetWinningTeam(team)` | Set the winning team |
+| `DOD_SetRoundState(state)` | Set the round state |
+| `DOD_SetPlayerState(client, state)` | Set a player's state |
+| `DOD_SetBombTargetState(entity, state)` | Set bomb target state |
 
-## AMBuild 安装说明
+## Available Forwards (Hooks)
 
-本项目使用 AMBuild 作为构建系统。由于 PyPI 上的版本可能不兼容，
-**推荐从源码安装**：
+| Forward | Description |
+|---------|-------------|
+| `OnVoiceCommand(client, &voiceCommand)` | Called when a voice command is used |
+| `OnJoinClass(client, &playerClass)` | Called when a player joins a class |
+| `OnPopHelmet(client, velocity[3], origin[3])` | Called when a helmet pops off |
+| `OnPlayerRespawn(client)` | Called when a player is about to respawn |
+| `OnAddWaveTime(team, &delay)` | Called when wave time is added |
+| `OnSetWinningTeam(team)` | Called when the winning team is set |
+| `OnEnterRoundState(&roundState)` | Called when round state changes |
+| `OnEnterPlayerState(client, &playerState)` | Called when player state changes |
+| `OnEnterBombTargetState(entity, &bombState)` | Called when bomb target state changes |
 
-```bash
-git clone https://github.com/alliedmodders/ambuild
-pip install ./ambuild
-```
+## Changes from Original
 
-## API 速览
-
-```pawn
-// 获取当前平台
-DODPlatform:DODHooks_GetPlatform();
-
-// 职业切换钩子
-forward Action:OnJoinClass(client, &DODClass:class);
-
-// 语音命令钩子
-forward Action:OnVoiceCommand(client, &voiceCommand);
-
-// 控制点
-native DODHooks_GetCapPointState(controlpoint);
-native DODHooks_SetCapPointState(controlpoint, state);
-
-// 玩家职业
-native DODClass:DOD_GetPlayerClass(client);
-native DODHooks_SetPlayerClass(client, DODClass:class);
-```
-
-完整 API 见 `sourcemod/scripting/include/dodhooks.inc`。
-
-## 故障排查
-
-| 问题 | 解决 |
-|------|------|
-| `ImportError: cannot import 'runplugin'` | AMBuild 版本不对，从源码重新安装最新 master |
-| `configure did not produce .ambuild2/vars` | configure 失败，检查依赖路径和 Python 版本 |
-| `unrecognized arguments: --outdir` | configure.py 不支持 `--outdir`，删除该参数 |
-| 运行时 `Failed to load extension` | gamedata 签名不匹配，更新 `dodhooks.txt` |
-| `No matching distribution for AMBuild` | 不要从 PyPI 安装，改用 `pip install ./ambuild`（源码） |
+- **SourceMod 1.12/1.13 compatibility** - Updated APIs and build system
+- **64-bit support** - Compiles and runs on 64-bit servers
+- **Modern C++17** - Updated compiler flags and standards
+- **Fixed crashes** - Addressed several server crash scenarios:
+  - NULL pointer checks in detour callbacks
+  - Proper stack alignment for 64-bit ThisCall conventions
+  - Safer gamedata signature resolution with better error messages
+  - Protected against invalid entity references
+- **Improved error handling** - Better error messages for missing gamedata or signatures
+- **GitHub Actions CI** - Automated builds for 4 platforms (Win/Linux x86/x64)
+- **Docker support** - Reproducible builds via containerization
 
 ## License
 
-GPL v2.0
+GPL v2 - See [LICENSE](LICENSE) for details.
+
+## Credits
+
+- **Andersso** - Original author
+- **ChesterSmitty** - Previous maintainer
+- **Apfelwurm** - CI improvements
+- **DNA-styx** - Current maintainer, 1.12/1.13 updates
+- **AlliedModders** - SourceMod, Metamod:Source, AMBuild

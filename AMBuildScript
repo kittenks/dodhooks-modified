@@ -1,94 +1,266 @@
-# vim: set ts=2 sw=2 tw=99 noet ft=python:
+# vim: set sts=2 ts=8 sw=2 tw=99 et ft=python:
 """
-DoDHooks - AMBuildScript
-AMBuild 2.2 / SourceMod 1.12 extension build script
+DODHooks - AMBuildScript
+
+Build configuration supporting:
+  - SourceMod 1.12 / 1.13
+  - Metamod:Source 1.12 / 1.13
+  - x86 (32-bit) and x86_64 (64-bit)
+  - Windows (MSVC) and Linux (GCC/Clang)
 """
 
-from ambuild2 import Extension
 import os
 
-# Project meta
-projectName = "dodhooks"
-projectVersion = "2.0.0"
-
-# Path helpers
-def GetSDKPath(builder, sdkName):
-    """Resolve SDK path from builder options."""
-    root = builder.options.get('hl2sdk_root')
-    if root:
-        return os.path.join(root, 'hl2sdk-' + sdkName)
+# ---------------------------------------------------------------------------
+# Path resolution helpers
+# ---------------------------------------------------------------------------
+def ResolveEnvPath(env, folder):
+    if env in os.environ:
+        path = os.environ[env]
+        if os.path.isdir(path):
+            return path
     return None
 
-def GetPlatform(builder):
-    if builder.target_platform == 'windows':
-        return 'win'
-    elif builder.target_platform == 'linux':
-        return 'linux'
-    return 'unknown'
+def Normalize(path):
+    return os.path.abspath(os.path.normpath(path))
 
-def GetArch(builder):
-    if builder.target_arch == 'x86_64':
-        return 'x64'
-    return 'x86'
+# ---------------------------------------------------------------------------
+# DODHooks Build Configuration
+# ---------------------------------------------------------------------------
+class DODHooksConfig(object):
+    def __init__(self):
+        self.mms_root = None
+        self.sm_root = None
+        self.extensions = []
 
-def build(builder):
-    platform = GetPlatform(builder)
-    arch = GetArch(builder)
-
-    print("[DoDHooks] Building for {}-{}".format(platform, arch))
-
-    # Create HL2 extension project
-    # Extension.HL2Project handles SM/MM/hl2sdk include paths and linking
-    project = Extension.HL2Project(builder, projectName + '.ext')
-
-    # Compiler flags
-    if builder.target_platform == 'linux':
-        project.cxx.flags += [
-            '-fPIC',
-            '-Wall',
-            '-Wno-unknown-pragmas',
-            '-Wno-unused-function',
-            '-Wno-sign-compare',
-            '-Wno-unused-variable',
-        ]
-        project.cxx.defines += ['LINUX', 'POSIX']
-    else:
-        project.cxx.flags += [
-            '/W3',
-            '/MP',
-            '/wd4996',
-            '/wd4267',
-            '/wd4244',
-        ]
-        project.cxx.defines += ['WIN32', 'WINDOWS']
-
-    # Optimization
-    if builder.options.get('enable-optimize'):
-        if builder.target_platform == 'linux':
-            project.cxx.flags += ['-O2']
+        # Detect target architecture
+        if builder.options.target:
+            builder.cxx = builder.DetectCxx(target_arch=builder.options.target)
         else:
-            project.cxx.flags += ['/O2']
+            # Default to x86 for backwards compatibility
+            builder.cxx = builder.DetectCxx(target_arch='x86')
 
-    # Debug info
-    if builder.options.get('enable-debug'):
-        if builder.target_platform == 'linux':
-            project.cxx.flags += ['-g']
+    @property
+    def tag(self):
+        if builder.options.debug == '1':
+            return 'Debug'
+        return 'Release'
+
+    def detectDeps(self):
+        # --- Metamod:Source ---
+        if builder.options.mms_path:
+            self.mms_root = builder.options.mms_path
         else:
-            project.cxx.flags += ['/Zi']
+            self.mms_root = ResolveEnvPath('MMSOURCE112', 'mmsource-1.12')
+            if not self.mms_root:
+                self.mms_root = ResolveEnvPath('MMSOURCE110', 'mmsource-1.10')
+            if not self.mms_root:
+                self.mms_root = ResolveEnvPath('MMSOURCE_DEV', 'mmsource-central')
 
-    # Source files (relative to this AMBuildScript)
-    sources = [
-        'extension.cpp',
-        'natives.cpp',
-        'vglobals.cpp',
-    ]
-    for s in sources:
-        project.sources.append(s)
+        if not self.mms_root or not os.path.isdir(self.mms_root):
+            raise Exception('Could not find a source copy of Metamod:Source')
+        self.mms_root = Normalize(self.mms_root)
 
-    # Add the project to the build
-    builder.Add(project)
+        # --- SourceMod ---
+        if builder.options.sm_path:
+            self.sm_root = builder.options.sm_path
+        else:
+            self.sm_root = ResolveEnvPath('SOURCEMOD112', 'sourcemod-1.12')
+            if not self.sm_root:
+                self.sm_root = ResolveEnvPath('SOURCEMOD16', 'sourcemod-1.6')
+            if not self.sm_root:
+                self.sm_root = ResolveEnvPath('SOURCEMOD', 'sourcemod-1.6')
+            if not self.sm_root:
+                self.sm_root = ResolveEnvPath('SMCENTRAL', 'sourcemod-central')
 
-# Backward compatibility entry point
-if __name__ == '__main__':
-    from ambuild2 import run
-    run.Main()
+        if not self.sm_root or not os.path.isdir(self.sm_root):
+            raise Exception('Could not find a source copy of SourceMod')
+        self.sm_root = Normalize(self.sm_root)
+
+    def configure(self):
+        """Configure the C++ compiler with all necessary flags."""
+        # Add configure files for rebuild tracking
+        builder.AddConfigureFile('configure.py')
+        builder.AddConfigureFile('AMBuildScript')
+
+        self.configure_cxx(builder.cxx)
+
+    def configure_cxx(self, cxx):
+        """Apply compiler-specific flags for both 32-bit and 64-bit builds."""
+
+        # --- GCC / Clang (Linux) ---
+        if cxx.like('gcc'):
+            cxx.defines += [
+                'stricmp=strcasecmp',
+                '_stricmp=strcasecmp',
+                '_snprintf=snprintf',
+                '_vsnprintf=vsnprintf',
+                'HAVE_STDINT_H',
+                'GNUC',
+            ]
+            cxx.cflags += [
+                '-pipe',
+                '-fno-strict-aliasing',
+                '-Wall',
+                '-Wno-unused',
+                '-Wno-switch',
+                '-Wno-format',
+                '-Wno-format-security',
+                '-Wno-array-bounds',
+            ]
+            cxx.cxxflags += [
+                '-std=c++17',
+            ]
+
+            # Architecture-specific flags
+            if cxx.target.arch == 'x86':
+                cxx.cflags += ['-msse', '-m32']
+                cxx.linkflags += ['-m32']
+                if cxx.family == 'gcc':
+                    cxx.cflags += ['-mfpmath=sse']
+            elif cxx.target.arch == 'x86_64':
+                cxx.cflags += ['-m64']
+                cxx.linkflags += ['-m64']
+
+            # Visibility
+            if cxx.family == 'gcc' or cxx.family == 'clang':
+                cxx.cflags += ['-fvisibility=hidden']
+                cxx.cxxflags += ['-fvisibility-inlines-hidden']
+
+            # Version-specific warnings
+            if cxx.family == 'gcc' and cxx.version >= '4':
+                cxx.cflags += ['-Wno-narrowing']
+            if (cxx.family == 'gcc' and cxx.version >= '4.6') or \
+               (cxx.family == 'clang' and cxx.version >= '3'):
+                cxx.cxxflags += ['-Wno-delete-non-virtual-dtor']
+            if cxx.family == 'gcc' and cxx.version >= '4.8':
+                cxx.cflags += ['-Wno-unused-result']
+            if cxx.family == 'clang':
+                cxx.cxxflags += ['-Wno-implicit-exception-spec-mismatch']
+            if cxx.version >= '3.4':
+                cxx.cxxflags += ['-Wno-deprecated-register']
+            else:
+                cxx.cxxflags += ['-Wno-deprecated']
+
+            cxx.cxxflags += [
+                '-fno-exceptions',
+                '-fno-threadsafe-statics',
+                '-Wno-non-virtual-dtor',
+                '-Wno-overloaded-virtual',
+            ]
+
+        # --- MSVC (Windows) ---
+        elif cxx.like('msvc'):
+            if builder.options.debug == '1':
+                cxx.cflags += ['/MTd']
+                cxx.linkflags += ['/NODEFAULTLIB:libcmt']
+            else:
+                cxx.cflags += ['/MT']
+
+            cxx.defines += [
+                '_CRT_SECURE_NO_DEPRECATE',
+                '_CRT_SECURE_NO_WARNINGS',
+                '_CRT_NONSTDC_NO_DEPRECATE',
+                '_ITERATOR_DEBUG_LEVEL=0',
+            ]
+            cxx.cflags += ['/W3']
+            cxx.cxxflags += [
+                '/EHsc',
+                '/GR-',
+                '/TP',
+                '/std:c++17',
+            ]
+            cxx.linkflags += [
+                '/MACHINE:X64' if cxx.target.arch == 'x86_64' else '/MACHINE:X86',
+                '/SUBSYSTEM:WINDOWS',
+                'kernel32.lib',
+                'user32.lib',
+                'gdi32.lib',
+                'winspool.lib',
+                'comdlg32.lib',
+                'advapi32.lib',
+                'shell32.lib',
+                'ole32.lib',
+                'oleaut32.lib',
+                'uuid.lib',
+                'odbc32.lib',
+                'odbccp32.lib',
+            ]
+
+        # --- Optimization ---
+        if builder.options.opt == '1':
+            cxx.defines += ['NDEBUG']
+            if cxx.like('gcc'):
+                cxx.cflags += ['-O3']
+            elif cxx.like('msvc'):
+                cxx.cflags += ['/Ox']
+                cxx.linkflags += ['/OPT:ICF', '/OPT:REF']
+
+        # --- Debug ---
+        if builder.options.debug == '1':
+            cxx.defines += ['DEBUG', '_DEBUG']
+            if cxx.like('msvc'):
+                cxx.cflags += ['/Od', '/RTC1']
+                if cxx.version >= 1600:
+                    cxx.cflags += ['/d2Zi+']
+                # Don't omit frame pointer (needed for detours)
+                cxx.cflags += ['/Oy-']
+
+        # --- Platform-specific ---
+        if cxx.target.platform == 'linux':
+            cxx.defines += ['_LINUX', 'POSIX']
+            if cxx.family == 'gcc':
+                cxx.linkflags += ['-static-libgcc']
+            elif cxx.family == 'clang':
+                cxx.linkflags += ['-lgcc_eh']
+                cxx.linkflags += ['-static-libstdc++']
+        elif cxx.target.platform == 'windows':
+            cxx.defines += ['WIN32', '_WINDOWS']
+
+    def ConfigureForExtension(self, context, compiler):
+        """Add include paths for the extension."""
+        compiler.cxxincludes += [
+            os.path.join(context.currentSourcePath),
+            os.path.join(self.sm_root, 'public'),
+            os.path.join(self.sm_root, 'public', 'extensions'),
+            os.path.join(self.sm_root, 'sourcepawn', 'include'),
+            os.path.join(self.sm_root, 'public', 'amtl', 'amtl'),
+            os.path.join(self.sm_root, 'public', 'amtl'),
+        ]
+        return compiler
+
+    def ConfigureForHL2(self, binary):
+        """Add HL2/Source SDK and Metamod:Source includes."""
+        compiler = binary.compiler
+
+        mms_path = os.path.join(self.mms_root, 'core')
+        compiler.cxxincludes += [
+            os.path.join(mms_path),
+            os.path.join(mms_path, 'sourcehook'),
+        ]
+
+        return binary
+
+    def HL2Project(self, context, name):
+        """Create a library project for the extension."""
+        project = context.LibraryProject(name)
+        self.ConfigureForExtension(context, context.cxx)
+        return project
+
+    def HL2Config(self, project, cxx, name):
+        """Configure a binary within the project."""
+        binary = project.Configure(cxx, name, '{0}'.format(self.tag))
+        return self.ConfigureForHL2(binary)
+
+
+# ---------------------------------------------------------------------------
+# Instantiate and run
+# ---------------------------------------------------------------------------
+DODHooks = DODHooksConfig()
+DODHooks.detectDeps()
+DODHooks.configure()
+
+# Build scripts
+BuildScripts = ['AMBuilder']
+
+builder.Build(BuildScripts, {'DODHooks': DODHooks})

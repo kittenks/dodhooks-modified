@@ -1,35 +1,51 @@
-# AMBuilder - 定义构建规则和文件复制
-# 此文件由 AMBuild 在构建阶段自动加载
+# vim: set sts=2 ts=8 sw=2 tw=99 et ft=python:
+"""
+DODHooks - AMBuilder
+
+Defines the source files and build targets for the extension.
+Supports both 32-bit and 64-bit builds.
+"""
 
 import os
 
-def build(builder):
-    """AMBuild 主构建函数"""
+projectName = 'dodhooks'
 
-    # 项目信息
-    project = builder.options.project
-    target = builder.options.target
+# smsdk_ext.cpp is automatically added by the build system in SM 1.12+
+sourceFiles = [
+    'extension.cpp',
+    'natives.cpp',
+    'vglobals.cpp',
+    '../sourcemod/public/CDetour/detours.cpp',
+    '../sourcemod/public/asm/asm.c',
+    '../sourcemod/public/libudis86/decode.c',
+    '../sourcemod/public/libudis86/itab.c',
+    '../sourcemod/public/libudis86/syn-att.c',
+    '../sourcemod/public/libudis86/syn-intel.c',
+    '../sourcemod/public/libudis86/syn.c',
+    '../sourcemod/public/libudis86/udis86.c',
+]
 
-    # 复制 gamedata 文件到产物目录
-    gamedata_src = os.path.join(builder.source_path, 'sourcemod', 'gamedata', 'dodhooks.txt')
-    gamedata_dst = os.path.join(builder.build_path, 'package', 'gamedata', 'dodhooks.txt')
-    if os.path.exists(gamedata_src):
-        builder.AddCopy(gamedata_src, gamedata_dst)
+# ---------------------------------------------------------------------------
+# Create the project
+# ---------------------------------------------------------------------------
+project = DODHooks.HL2Project(builder, projectName + '.ext')
 
-    # 复制 include 文件
-    include_src = os.path.join(builder.source_path, 'sourcemod', 'include', 'dodhooks.inc')
-    include_dst = os.path.join(builder.build_path, 'package', 'include', 'dodhooks.inc')
-    if os.path.exists(include_src):
-        builder.AddCopy(include_src, include_dst)
+# Add source files
+project.sources += sourceFiles
 
-    # 复制示例插件
-    example_src = os.path.join(builder.source_path, 'sourcemod', 'plugins', 'dodhooks_example.sp')
-    example_dst = os.path.join(builder.build_path, 'package', 'plugins', 'dodhooks_example.sp')
-    if os.path.exists(example_src):
-        builder.AddCopy(example_src, example_dst)
+# ---------------------------------------------------------------------------
+# Create a binary for each supported SDK
+# ---------------------------------------------------------------------------
+for sdk_name in DODHooks.sdks:
+    sdk = DODHooks.sdks[sdk_name]
 
-    # 复制 autoload 配置
-    autoload_src = os.path.join(builder.source_path, 'sourcemod', 'configs', 'dodhooks.autoload')
-    autoload_dst = os.path.join(builder.build_path, 'package', 'configs', 'dodhooks.autoload')
-    if os.path.exists(autoload_src):
-        builder.AddCopy(autoload_src, autoload_dst)
+    # The binary name follows the pattern: dodhooks.ext.<sdk>.<arch>
+    binary_name = '{0}.ext.{1}'.format(projectName, sdk.ext)
+    if builder.cxx.target.arch == 'x86_64':
+        binary_name += '.x64'
+
+    binary = DODHooks.HL2Config(project, builder.cxx, binary_name)
+    DODHooks.extensions.append(binary)
+
+# Export for PackageScript
+Extension = DODHooks

@@ -1,37 +1,45 @@
+/**
+ * vim: set ts=4 :
+ * ======================================================
+ * DODHooks - Detours & Natives for Day of Defeat: Source
+ * ======================================================
+ *
+ * GPLv2 License
+ */
+
 #include "extension.h"
+#include "CDetour/detours.h"
 #include "vglobals.h"
 #include "natives.h"
 
-// Global extension interface
 CDODHooks g_Interface;
 SMEXT_LINK(&g_Interface)
 
-// Detour pointers
-CDetour *g_pDetVoiceCommand = NULL;
-CDetour *g_pDetJoinClass = NULL;
-CDetour *g_pDetPopHelmet = NULL;
-CDetour *g_pDetRespawn = NULL;
-CDetour *g_pDetAddWaveTime = NULL;
-CDetour *g_pDetSetWinningTeam = NULL;
-CDetour *g_pDetRoundState = NULL;
-CDetour *g_pDetPlayerState = NULL;
+/* Detour pointers */
+CDetour *g_pDetVoiceCommand     = NULL;
+CDetour *g_pDetJoinClass        = NULL;
+CDetour *g_pDetPopHelmet        = NULL;
+CDetour *g_pDetRespawn         = NULL;
+CDetour *g_pDetAddWaveTime     = NULL;
+CDetour *g_pDetSetWinningTeam  = NULL;
+CDetour *g_pDetRoundState      = NULL;
+CDetour *g_pDetPlayerState     = NULL;
 CDetour *g_pDetBombTargetState = NULL;
 
-// Forward handles
-IForward *g_pFwdVoiceCommand = NULL;
-IForward *g_pFwdJoinClass = NULL;
-IForward *g_pFwdPopHelmet = NULL;
-IForward *g_pFwdRespawn = NULL;
-IForward *g_pFwdAddWaveTime = NULL;
-IForward *g_pFwdSetWinningTeam = NULL;
-IForward *g_pFwdRoundState = NULL;
-IForward *g_pFwdPlayerState = NULL;
+/* Forwards */
+IForward *g_pFwdVoiceCommand     = NULL;
+IForward *g_pFwdJoinClass        = NULL;
+IForward *g_pFwdPopHelmet        = NULL;
+IForward *g_pFwdRespawn         = NULL;
+IForward *g_pFwdAddWaveTime     = NULL;
+IForward *g_pFwdSetWinningTeam  = NULL;
+IForward *g_pFwdRoundState      = NULL;
+IForward *g_pFwdPlayerState     = NULL;
 IForward *g_pFwdBombTargetState = NULL;
 
-// Game config
+/* Globals */
 IGameConfig *g_pGameConf = NULL;
 
-// Engine interfaces
 ICvar *g_pCvar = NULL;
 ConCommand *g_pKillCmd = NULL;
 INetworkStringTableContainer *netstringtables = NULL;
@@ -46,7 +54,6 @@ IServerGameClients *g_pGameClients = NULL;
 
 CSharedEdictChangeInfo *g_pSharedChangeInfo = NULL;
 
-// Send prop offsets
 uint32 g_iOffset_PlayerClass;
 uint32 g_iOffset_DesiredPlayerClass;
 
@@ -62,13 +69,18 @@ uint32 g_iOffset_TimerPaused;
 uint32 g_iOffset_TimeRemaining;
 uint32 g_iOffset_TimerEndTime;
 
-// Kill command tracking
 float g_fKillCmdBlockTime[DOD_MAXPLAYERS + 1];
 uint32 g_iCmdClient;
 
-// ============================================================================
-// Detour implementations
-// ============================================================================
+/* ============================================================================
+ * SH_DECL_HOOKs for ConCommand and IServerGameClients
+ * ========================================================================== */
+SH_DECL_HOOK1_void(ConCommand, Dispatch, SH_NOATTRIB, false, const CCommand &);
+SH_DECL_HOOK1_void(IServerGameClients, SetCommandClient, SH_NOATTRIB, false, int);
+
+/* ============================================================================
+ * Detour callback implementations
+ * ========================================================================== */
 
 DETOUR_DECL_MEMBER1(VoiceCommand, void, int, iVoiceCommand)
 {
@@ -95,10 +107,11 @@ DETOUR_DECL_MEMBER1(JoinClass, void, int, iPlayerClass)
     g_pFwdJoinClass->PushCell(client);
     g_pFwdJoinClass->PushCellByRef(&iPlayerClass);
     g_pFwdJoinClass->Execute(&Result);
-    
+
     if (Result >= Pl_Handled)
     {
         g_fKillCmdBlockTime[client] = g_pGlobals->curtime + 0.1f;
+
         return;
     }
 
@@ -113,7 +126,7 @@ DETOUR_DECL_MEMBER2(PopHelmet, void, Vector, vecVelocity, Vector, vecOrigin)
     g_pFwdPopHelmet->PushArray((cell_t *)&vecVelocity, 3, SM_PARAM_COPYBACK);
     g_pFwdPopHelmet->PushArray((cell_t *)&vecOrigin, 3, SM_PARAM_COPYBACK);
     g_pFwdPopHelmet->Execute(&Result);
-    
+
     if (Result >= Pl_Handled)
     {
         return;
@@ -167,7 +180,7 @@ DETOUR_DECL_MEMBER1(SetWinningTeam, void, int, iTeamIndex)
 
 DETOUR_DECL_MEMBER1(RoundState, void, int, iRoundState)
 {
-    static uint8 iPreviousRoundState = (uint8)-1;
+    static uint8 iPreviousRoundState = -1;
 
     if (iRoundState == iPreviousRoundState)
     {
@@ -180,7 +193,8 @@ DETOUR_DECL_MEMBER1(RoundState, void, int, iRoundState)
 
     if (Result >= Pl_Handled)
     {
-        iPreviousRoundState = (uint8)iRoundState;
+        iPreviousRoundState = iRoundState;
+
         return;
     }
 
@@ -217,9 +231,9 @@ DETOUR_DECL_MEMBER1(BombTargetState, void, int, iBombTargetState)
     DETOUR_MEMBER_CALL(BombTargetState)(iBombTargetState);
 }
 
-// ============================================================================
-// Kill command hook
-// ============================================================================
+/* ============================================================================
+ * Kill command hook
+ * ========================================================================== */
 
 void OnKillCommand(const CCommand &command)
 {
@@ -231,13 +245,13 @@ void CDODHooks::OnSetCommandClient(int client)
     g_iCmdClient = client + 1;
 }
 
-// ============================================================================
-// SDKExtension overrides
-// ============================================================================
+/* ============================================================================
+ * CDODHooks implementation
+ * ========================================================================== */
 
 bool CDODHooks::SDK_OnLoad(char *error, size_t maxlength, bool late)
 {
-    // Add dependencies
+    /* Register dependencies */
     sharesys->AddDependency(myself, "bintools.ext", true, true);
     sharesys->AddDependency(myself, "sdktools.ext", true, true);
     sharesys->AddNatives(myself, g_Natives);
@@ -254,28 +268,25 @@ bool CDODHooks::SDK_OnLoad(char *error, size_t maxlength, bool late)
         {
             snprintf(error, maxlength, "Fatal Error: Unable to open file: \"dodhooks.txt\"");
         }
+
         return false;
     }
 
+    /* Initialize the detour manager */
     CDetourManager::Init(g_pSM->GetScriptingEngine(), g_pGameConf);
 
-    // Create all detours
-    CREATE_DETOUR(g_pDetVoiceCommand, VoiceCommand, "VoiceCommand");
-    CREATE_DETOUR(g_pDetJoinClass, JoinClass, "JoinClass");
-    CREATE_DETOUR(g_pDetPopHelmet, PopHelmet, "PopHelmet");
-    CREATE_DETOUR(g_pDetRespawn, Respawn, "DODRespawn");
-    CREATE_DETOUR(g_pDetAddWaveTime, AddWaveTime, "AddWaveTime");
-    CREATE_DETOUR(g_pDetSetWinningTeam, SetWinningTeam, "SetWinningTeam");
-    CREATE_DETOUR(g_pDetRoundState, RoundState, "RoundState");
-    CREATE_DETOUR(g_pDetPlayerState, PlayerState, "PlayerState");
-    CREATE_DETOUR(g_pDetBombTargetState, BombTargetState, "BombTargetState");
+    /* Setup all detours */
+    if (!SetupDetours(error, maxlength))
+    {
+        return false;
+    }
 
     return true;
 }
 
 void CDODHooks::SDK_OnUnload()
 {
-    // Remove hooks
+    /* Remove SourceHook hooks */
     if (g_pGameClients)
     {
         SH_REMOVE_HOOK_MEMFUNC(IServerGameClients, SetCommandClient, g_pGameClients, this, &CDODHooks::OnSetCommandClient, false);
@@ -286,25 +297,133 @@ void CDODHooks::SDK_OnUnload()
         SH_REMOVE_HOOK_STATICFUNC(ConCommand, Dispatch, g_pKillCmd, OnKillCommand, false);
     }
 
-    // Close game config
+    /* Close gamedata */
     if (g_pGameConf)
     {
         g_pGameConfs->CloseGameConfigFile(g_pGameConf);
         g_pGameConf = NULL;
     }
-    
-    // Release forwards
-    if (g_pFwdVoiceCommand)      { g_pForwards->ReleaseForward(g_pFwdVoiceCommand);      g_pFwdVoiceCommand = NULL; }
-    if (g_pFwdJoinClass)         { g_pForwards->ReleaseForward(g_pFwdJoinClass);         g_pFwdJoinClass = NULL; }
-    if (g_pFwdPopHelmet)         { g_pForwards->ReleaseForward(g_pFwdPopHelmet);         g_pFwdPopHelmet = NULL; }
-    if (g_pFwdRespawn)           { g_pForwards->ReleaseForward(g_pFwdRespawn);           g_pFwdRespawn = NULL; }
-    if (g_pFwdAddWaveTime)       { g_pForwards->ReleaseForward(g_pFwdAddWaveTime);       g_pFwdAddWaveTime = NULL; }
-    if (g_pFwdSetWinningTeam)    { g_pForwards->ReleaseForward(g_pFwdSetWinningTeam);    g_pFwdSetWinningTeam = NULL; }
-    if (g_pFwdRoundState)        { g_pForwards->ReleaseForward(g_pFwdRoundState);        g_pFwdRoundState = NULL; }
-    if (g_pFwdPlayerState)       { g_pForwards->ReleaseForward(g_pFwdPlayerState);       g_pFwdPlayerState = NULL; }
-    if (g_pFwdBombTargetState)   { g_pForwards->ReleaseForward(g_pFwdBombTargetState);   g_pFwdBombTargetState = NULL; }
 
-    // Remove detours
+    /* Unregister forwards */
+    UnregisterForwards();
+
+    /* Teardown detours */
+    TeardownDetours();
+}
+
+void CDODHooks::SDK_OnAllLoaded()
+{
+    /* Get late-bound interfaces */
+    SM_GET_LATE_IFACE(BINTOOLS, g_pBinTools);
+    SM_GET_LATE_IFACE(SDKTOOLS, g_pSDKTools);
+
+    if (!g_pBinTools)
+    {
+        META_CONPRINTF("DODHooks: Fatal Error: Failed to load bintools.\n");
+        return;
+    }
+
+    if (!g_pGameClients)
+    {
+        META_CONPRINTF("DODHooks: Warning: GameClients interface not available.\n");
+    }
+    else
+    {
+        SH_ADD_HOOK_MEMFUNC(IServerGameClients, SetCommandClient, g_pGameClients, this, &CDODHooks::OnSetCommandClient, false);
+    }
+
+    g_pKillCmd = g_pCvar->FindCommand("kill");
+    if (g_pKillCmd)
+    {
+        SH_ADD_HOOK_STATICFUNC(ConCommand, Dispatch, g_pKillCmd, OnKillCommand, false);
+    }
+
+    /* Resolve send property offsets */
+    g_iOffset_PlayerClass      = GetSendPropOffset("CDODPlayer", "m_iPlayerClass");
+    g_iOffset_DesiredPlayerClass = GetSendPropOffset("CDODPlayer", "m_iDesiredPlayerClass");
+
+    g_iOffset_NumControlPoints = GetSendPropOffset("CDODObjectiveResource", "m_iNumControlPoints");
+    g_iOffset_AlliesIcons      = GetSendPropOffset("CDODObjectiveResource", "m_iAlliesIcons");
+    g_iOffset_AxisIcons        = GetSendPropOffset("CDODObjectiveResource", "m_iAxisIcons");
+    g_iOffset_NeutralIcons     = GetSendPropOffset("CDODObjectiveResource", "m_iNeutralIcons");
+    g_iOffset_TimerCapIcons    = GetSendPropOffset("CDODObjectiveResource", "m_iTimerCapIcons");
+    g_iOffset_BombedIcons      = GetSendPropOffset("CDODObjectiveResource", "m_iBombedIcons");
+    g_iOffset_CPIsVisible      = GetSendPropOffset("CDODObjectiveResource", "m_bCPIsVisible");
+
+    g_iOffset_TimerPaused      = GetSendPropOffset("CDODRoundTimer", "m_bTimerPaused");
+    g_iOffset_TimeRemaining    = GetSendPropOffset("CDODRoundTimer", "m_flTimeRemaining");
+    g_iOffset_TimerEndTime     = GetSendPropOffset("CDODRoundTimer", "m_flTimerEndTime");
+
+    /* Register forwards */
+    RegisterForwards();
+
+    /* Initialize valve globals (g_pObjectiveResource, etc.) */
+    InitializeValveGlobals();
+}
+
+bool CDODHooks::SDK_OnMetamodLoad(SourceMM::ISmmAPI *ismm, char *error, size_t maxlen, bool late)
+{
+    GET_V_IFACE_CURRENT(GetEngineFactory, g_pEngine, IVEngineServer, INTERFACEVERSION_VENGINESERVER);
+    GET_V_IFACE_CURRENT(GetEngineFactory, g_pCvar, ICvar, CVAR_INTERFACE_VERSION);
+    GET_V_IFACE_CURRENT(GetServerFactory, g_pGameEnts, IServerGameEnts, INTERFACEVERSION_SERVERGAMEENTS);
+    GET_V_IFACE_ANY(GetServerFactory, g_pGameClients, IServerGameClients, INTERFACEVERSION_SERVERGAMECLIENTS);
+    GET_V_IFACE_ANY(GetEngineFactory, netstringtables, INetworkStringTableContainer, INTERFACENAME_NETWORKSTRINGTABLESERVER);
+
+    g_pGlobals = ismm->GetCGlobals();
+
+    if (g_pEngine)
+    {
+        g_pSharedChangeInfo = g_pEngine->GetSharedEdictChangeInfo();
+    }
+
+    return true;
+}
+
+void CDODHooks::RegisterForwards()
+{
+    g_pFwdVoiceCommand     = g_pForwards->CreateForward("OnVoiceCommand",      ET_Event, 2, NULL, Param_Cell, Param_CellByRef);
+    g_pFwdJoinClass        = g_pForwards->CreateForward("OnJoinClass",         ET_Event, 2, NULL, Param_Cell, Param_CellByRef);
+    g_pFwdPopHelmet        = g_pForwards->CreateForward("OnPopHelmet",        ET_Event, 3, NULL, Param_Cell, Param_Array, Param_Array);
+    g_pFwdRespawn         = g_pForwards->CreateForward("OnPlayerRespawn",    ET_Event, 1, NULL, Param_Cell);
+    g_pFwdAddWaveTime     = g_pForwards->CreateForward("OnAddWaveTime",      ET_Event, 2, NULL, Param_Cell, Param_FloatByRef);
+    g_pFwdSetWinningTeam  = g_pForwards->CreateForward("OnSetWinningTeam",   ET_Event, 1, NULL, Param_Cell);
+    g_pFwdRoundState      = g_pForwards->CreateForward("OnEnterRoundState",   ET_Event, 1, NULL, Param_CellByRef);
+    g_pFwdPlayerState     = g_pForwards->CreateForward("OnEnterPlayerState",  ET_Event, 2, NULL, Param_Cell, Param_CellByRef);
+    g_pFwdBombTargetState = g_pForwards->CreateForward("OnEnterBombTargetState", ET_Event, 2, NULL, Param_Cell, Param_CellByRef);
+}
+
+void CDODHooks::UnregisterForwards()
+{
+    if (g_pFwdVoiceCommand)     { g_pForwards->ReleaseForward(g_pFwdVoiceCommand);     g_pFwdVoiceCommand = NULL; }
+    if (g_pFwdJoinClass)        { g_pForwards->ReleaseForward(g_pFwdJoinClass);        g_pFwdJoinClass = NULL; }
+    if (g_pFwdPopHelmet)        { g_pForwards->ReleaseForward(g_pFwdPopHelmet);        g_pFwdPopHelmet = NULL; }
+    if (g_pFwdRespawn)         { g_pForwards->ReleaseForward(g_pFwdRespawn);         g_pFwdRespawn = NULL; }
+    if (g_pFwdAddWaveTime)     { g_pForwards->ReleaseForward(g_pFwdAddWaveTime);     g_pFwdAddWaveTime = NULL; }
+    if (g_pFwdSetWinningTeam)  { g_pForwards->ReleaseForward(g_pFwdSetWinningTeam);  g_pFwdSetWinningTeam = NULL; }
+    if (g_pFwdRoundState)      { g_pForwards->ReleaseForward(g_pFwdRoundState);      g_pFwdRoundState = NULL; }
+    if (g_pFwdPlayerState)     { g_pForwards->ReleaseForward(g_pFwdPlayerState);     g_pFwdPlayerState = NULL; }
+    if (g_pFwdBombTargetState) { g_pForwards->ReleaseForward(g_pFwdBombTargetState); g_pFwdBombTargetState = NULL; }
+}
+
+bool CDODHooks::SetupDetours(char *error, size_t maxlength)
+{
+    char szConfigError[255] = "";
+
+    CREATE_DETOUR(g_pDetVoiceCommand,     VoiceCommand,     "VoiceCommand");
+    CREATE_DETOUR(g_pDetJoinClass,        JoinClass,        "JoinClass");
+    CREATE_DETOUR(g_pDetPopHelmet,        PopHelmet,        "PopHelmet");
+    CREATE_DETOUR(g_pDetRespawn,         Respawn,         "DODRespawn");
+    CREATE_DETOUR(g_pDetAddWaveTime,     AddWaveTime,     "AddWaveTime");
+    CREATE_DETOUR(g_pDetSetWinningTeam,  SetWinningTeam,  "SetWinningTeam");
+    CREATE_DETOUR(g_pDetRoundState,      RoundState,      "RoundState");
+    CREATE_DETOUR(g_pDetPlayerState,     PlayerState,     "PlayerState");
+    CREATE_DETOUR(g_pDetBombTargetState, BombTargetState, "BombTargetState");
+
+    return true;
+}
+
+void CDODHooks::TeardownDetours()
+{
     REMOVE_DETOUR(g_pDetVoiceCommand);
     REMOVE_DETOUR(g_pDetJoinClass);
     REMOVE_DETOUR(g_pDetPopHelmet);
@@ -315,123 +434,3 @@ void CDODHooks::SDK_OnUnload()
     REMOVE_DETOUR(g_pDetPlayerState);
     REMOVE_DETOUR(g_pDetBombTargetState);
 }
-
-void CDODHooks::SDK_OnAllLoaded()
-{
-    // Get late interfaces
-    SM_GET_LATE_IFACE(BINTOOLS, g_pBinTools);
-    SM_GET_LATE_IFACE(SDKTOOLS, g_pSDKTools);
-
-    if (!g_pBinTools)
-    {
-        META_CONPRINTF("Fatal Error: Failed to load bintools.\n");
-        return;
-    }
-
-    // Add hooks
-    if (g_pGameClients)
-    {
-        SH_ADD_HOOK_MEMFUNC(IServerGameClients, SetCommandClient, g_pGameClients, this, &CDODHooks::OnSetCommandClient, false);
-    }
-
-    if (g_pCvar)
-    {
-        g_pKillCmd = g_pCvar->FindCommand("kill");
-        if (g_pKillCmd)
-        {
-            SH_ADD_HOOK_STATICFUNC(ConCommand, Dispatch, g_pKillCmd, OnKillCommand, false);
-        }
-    }
-
-    // Get send prop offsets
-    g_iOffset_PlayerClass = GetSendPropOffset("CDODPlayer", "m_iPlayerClass");
-    g_iOffset_DesiredPlayerClass = GetSendPropOffset("CDODPlayer", "m_iDesiredPlayerClass");
-
-    g_iOffset_NumControlPoints = GetSendPropOffset("CDODObjectiveResource", "m_iNumControlPoints");
-    g_iOffset_AlliesIcons = GetSendPropOffset("CDODObjectiveResource", "m_iAlliesIcons");
-    g_iOffset_AxisIcons = GetSendPropOffset("CDODObjectiveResource", "m_iAxisIcons");
-    g_iOffset_NeutralIcons = GetSendPropOffset("CDODObjectiveResource", "m_iNeutralIcons");
-    g_iOffset_TimerCapIcons = GetSendPropOffset("CDODObjectiveResource", "m_iTimerCapIcons");
-    g_iOffset_BombedIcons = GetSendPropOffset("CDODObjectiveResource", "m_iBombedIcons");
-    g_iOffset_CPIsVisible = GetSendPropOffset("CDODObjectiveResource", "m_bCPIsVisible");
-
-    g_iOffset_TimerPaused = GetSendPropOffset("CDODRoundTimer", "m_bTimerPaused");
-    g_iOffset_TimeRemaining = GetSendPropOffset("CDODRoundTimer", "m_flTimeRemaining");
-    g_iOffset_TimerEndTime = GetSendPropOffset("CDODRoundTimer", "m_flTimerEndTime");
-
-    // Create forwards
-    g_pFwdVoiceCommand = g_pForwards->CreateForward("OnVoiceCommand", ET_Event, 2, NULL, Param_Cell, Param_CellByRef);
-    g_pFwdJoinClass = g_pForwards->CreateForward("OnJoinClass", ET_Event, 2, NULL, Param_Cell, Param_CellByRef);
-    g_pFwdPopHelmet = g_pForwards->CreateForward("OnPopHelmet", ET_Event, 3, NULL, Param_Cell, Param_Array, Param_Array);
-    g_pFwdRespawn = g_pForwards->CreateForward("OnPlayerRespawn", ET_Event, 1, NULL, Param_Cell);
-    g_pFwdAddWaveTime = g_pForwards->CreateForward("OnAddWaveTime", ET_Event, 2, NULL, Param_Cell, Param_FloatByRef);
-    g_pFwdSetWinningTeam = g_pForwards->CreateForward("OnSetWinningTeam", ET_Event, 1, NULL, Param_Cell);
-    g_pFwdRoundState = g_pForwards->CreateForward("OnEnterRoundState", ET_Event, 1, NULL, Param_CellByRef);
-    g_pFwdPlayerState = g_pForwards->CreateForward("OnEnterPlayerState", ET_Event, 2, NULL, Param_Cell, Param_CellByRef);
-    g_pFwdBombTargetState = g_pForwards->CreateForward("OnEnterBombTargetState", ET_Event, 2, NULL, Param_Cell, Param_CellByRef);
-
-    // Initialize Valve globals
-    InitializeValveGlobals();
-}
-
-bool CDODHooks::QueryRunning(char *error, size_t maxlength)
-{
-    if (g_pDetVoiceCommand && !g_pDetVoiceCommand->IsEnabled())
-        return false;
-    if (g_pDetJoinClass && !g_pDetJoinClass->IsEnabled())
-        return false;
-    if (g_pDetPopHelmet && !g_pDetPopHelmet->IsEnabled())
-        return false;
-    if (g_pDetRespawn && !g_pDetRespawn->IsEnabled())
-        return false;
-    if (g_pDetAddWaveTime && !g_pDetAddWaveTime->IsEnabled())
-        return false;
-    if (g_pDetSetWinningTeam && !g_pDetSetWinningTeam->IsEnabled())
-        return false;
-    if (g_pDetRoundState && !g_pDetRoundState->IsEnabled())
-        return false;
-    if (g_pDetPlayerState && !g_pDetPlayerState->IsEnabled())
-        return false;
-    if (g_pDetBombTargetState && !g_pDetBombTargetState->IsEnabled())
-        return false;
-
-    return true;
-}
-
-void CDODHooks::NotifyInterfaceDrop(SMInterface *pInterface)
-{
-    if (pInterface == g_pBinTools)
-    {
-        g_pBinTools = NULL;
-    }
-    if (pInterface == g_pSDKTools)
-    {
-        g_pSDKTools = NULL;
-    }
-}
-
-#if defined SMEXT_CONF_METAMOD
-bool CDODHooks::SDK_OnMetamodLoad(SourceMM::ISmmAPI *ismm, char *error, size_t maxlen, bool late)
-{
-    GET_V_IFACE_CURRENT(GetEngineFactory, g_pEngine, IVEngineServer, INTERFACEVERSION_VENGINESERVER);
-    GET_V_IFACE_CURRENT(GetEngineFactory, g_pCvar, ICvar, CVAR_INTERFACE_VERSION);
-    GET_V_IFACE_CURRENT(GetServerFactory, g_pGameEnts, IServerGameEnts, INTERFACEVERSION_SERVERGAMEENTS);
-    GET_V_IFACE_ANY(GetServerFactory, g_pGameClients, IServerGameClients, INTERFACEVERSION_SERVERGAMECLIENTS);
-    GET_V_IFACE_ANY(GetEngineFactory, netstringtables, INetworkStringTableContainer, INTERFACENAME_NETWORKSTRINGTABLESERVER);
-
-    g_pGlobals = ismm->GetCGlobals();
-    g_pSharedChangeInfo = g_pEngine->GetSharedEdictChangeInfo();
-
-    return true;
-}
-
-bool CDODHooks::SDK_OnMetamodUnload(char *error, size_t maxlength)
-{
-    return true;
-}
-
-bool CDODHooks::SDK_OnMetamodPauseChange(bool paused, char *error, size_t maxlength)
-{
-    return true;
-}
-#endif
