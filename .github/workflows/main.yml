@@ -56,12 +56,13 @@ jobs:
           ref: 1.11-dev
           path: mmsource
 
-      - name: Checkout hl2sdk-dod
+      # 修这里：分支 dods，目录 hl2sdk-dods
+      - name: Checkout hl2sdk-dods
         uses: actions/checkout@v4
         with:
           repository: alliedmodders/hl2sdk
-          ref: dod
-          path: hl2sdk-dod
+          ref: dods
+          path: hl2sdk-dods
 
       - name: Checkout AMBuild
         uses: actions/checkout@v4
@@ -143,7 +144,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dodhooks-${{ runner.os }}-${{ matrix.arch }}
-          path: src/build/objdir/package/*
+          path: src/build/package/*
           if-no-files-found: error
 
   release:
