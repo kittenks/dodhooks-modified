@@ -1,99 +1,332 @@
-runs-on: ${{ matrix.os }}
+name: Build DoDHooks
 
-steps:
-  # 1. 检出当前仓库代码 (包含子模块)
-  - name: Checkout source
-    uses: actions/checkout@v4
-    with:
-      submodules: recursive
+on:
+  push:
+    branches:
+      - main
+      - master
+      - sm-1.12
+    tags:
+      - "v*"
+    paths:
+      - 'pushbuild.txt'
+      - '.github/workflows/build.yml'
+      - 'extension.cpp'
+      - 'natives.cpp'
+      - 'vglobals.cpp'
+      - 'extension.h'
+      - 'natives.h'
+      - 'vglobals.h'
+      - 'smsdk_config.h'
+      - 'AMBuildScript'
+      - 'AMBuilder'
+      - 'configure.py'
+      - 'PackageScript'
+      - 'sourcemod/gamedata/**'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      sm_branch:
+        description: 'SourceMod branch to build against'
+        required: false
+        default: '1.12-dev'
+        type: string
+      mms_branch:
+        description: 'Metamod:Source branch to build against'
+        required: false
+        default: '1.12-dev'
+        type: string
 
-  # 2. 检出 SourceMod (供 configure 使用)
-  - name: Checkout SourceMod
-    uses: actions/checkout@v4
-    with:
-      repository: alliedmodders/sourcemod
-      ref: 1.12-dev
-      path: sourcemod
+env:
+  SM_BRANCH: ${{ github.event.inputs.sm_branch || '1.12-dev' }}
+  MMSOURCE_BRANCH: ${{ github.event.inputs.mms_branch || '1.12-dev' }}
+  HL2SDK_DODS_BRANCH: 'dods'
 
-  # 3. 检出 MetaMod:Source (供 configure 使用)
-  - name: Checkout MetaMod:Source
-    uses: actions/checkout@v4
-    with:
-      repository: alliedmodders/metamod-source
-      ref: 1.11-dev
-      path: mmsource
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86
+            cc: gcc-9
+            cxx: g++-9
+          - target: x86_64
+            cc: gcc-9
+            cxx: g++-9
 
-  # 4. 检出 HL2SDK (DoD S)
-  - name: Checkout hl2sdk-dods
-    uses: actions/checkout@v4
-    with:
-      repository: alliedmodders/hl2sdk
-      ref: dods
-      path: hl2sdk-dods
+    name: Linux ${{ matrix.target }}
 
-  # 5. 设置 Python 3.11
-  - name: Set up Python
-    uses: actions/setup-python@v5
-    with:
-      python-version: "3.11"
+    steps:
+      - name: Checkout DoDHooks
+        uses: actions/checkout@v4
+        with:
+          path: dodhooks
+          submodules: recursive
 
-  # 6. 【核心修复】安装特定版本的 AMBuild
-  # 包名必须是大写的 AMBuild，且锁定 2.2.0 版本以避免 API 变动
-  - name: Install AMBuild 2.2.0
-    run: pip install AMBuild==2.2.0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-  # 7. Linux 额外依赖
-  - name: Install Linux deps
-    if: runner.os == 'Linux' && matrix.arch == 'x86_64'
-    run: sudo apt-get update && sudo apt-get install -y clang libc6-dev
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install "AMBuild==2.2.0"
 
-  # 8. 设置 MSVC (仅 Windows)
-  - name: Setup MSVC
-    if: runner.os == 'Windows'
-    uses: ilammy/msvc-dev-cmd@v1
-    with:
-      arch: ${{ matrix.arch == 'x86' && 'x86' || 'x64' }}
+      - name: Install dependencies (x86)
+        if: matrix.target == 'x86'
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-9-multilib g++-9-multilib \
+            lib32stdc++6 lib32z1-dev libc6-dev-i386 \
+            linux-libc-dev:i386
 
-  # 9. Linux 配置
-  - name: Configure (Linux)
-    if: runner.os == 'Linux'
-    working-directory: src
-    run: |
-      rm -rf build
-      mkdir build && cd build
-      python3 ../configure.py \
-        --targets=${{ matrix.arch }} \
-        --enable-optimize \
-        --sm-path=$GITHUB_WORKSPACE/sourcemod \
-        --mms-path=$GITHUB_WORKSPACE/mmsource \
-        --hl2sdk-root=$GITHUB_WORKSPACE \
-        --sdks=dod
+      - name: Install dependencies (x86_64)
+        if: matrix.target == 'x86_64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-9 g++-9 zip
 
-  # 10. Windows 配置
-  - name: Configure (Windows)
-    if: runner.os == 'Windows'
-    working-directory: src
-    shell: cmd
-    run: |
-      if exist build rmdir /s /q build
-      mkdir build && cd build
-      python ../configure.py ^
-        --targets=${{ matrix.arch }} ^
-        --enable-optimize ^
-        --sm-path=%GITHUB_WORKSPACE%\sourcemod ^
-        --mms-path=%GITHUB_WORKSPACE%\mmsource ^
-        --hl2sdk-root=%GITHUB_WORKSPACE% ^
-        --sdks=dod
+      - name: Checkout SourceMod
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/sourcemod
+          ref: ${{ env.SM_BRANCH }}
+          path: sourcemod
+          submodules: recursive
 
-  # 11. 编译
-  - name: Build
-    working-directory: src/build
-    run: ambuild
+      - name: Checkout Metamod:Source
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/metamod-source
+          ref: ${{ env.MMSOURCE_BRANCH }}
+          path: metamod-source
+          submodules: recursive
 
-  # 12. 上传产物
-  - name: Upload artifact
-    uses: actions/upload-artifact@v4
-    with:
-      name: dodhooks-${{ runner.os }}-${{ matrix.arch }}
-      path: src/build/package/*
-      if-no-files-found: error
+      - name: Checkout HL2SDK for DoD:S
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/hl2sdk
+          ref: ${{ env.HL2SDK_DODS_BRANCH }}
+          path: hl2sdk-dods
+
+      - name: Configure (Linux ${{ matrix.target }})
+        working-directory: dodhooks
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          rm -rf build
+          mkdir build
+          cd build
+          python3 ../configure.py \
+            --sm-path="${{ github.workspace }}/sourcemod" \
+            --mms-path="${{ github.workspace }}/metamod-source" \
+            --hl2sdk-root="${{ github.workspace }}" \
+            --enable-optimize \
+            --targets=${{ matrix.target }}
+
+      - name: Build (Linux ${{ matrix.target }})
+        working-directory: dodhooks/build
+        run: |
+          ambuild
+
+      - name: Package artifacts
+        working-directory: dodhooks/build
+        run: |
+          PKG="dodhooks-linux-${{ matrix.target }}"
+          rm -rf "${PKG}"
+          mkdir -p "${PKG}/addons/sourcemod/extensions"
+          mkdir -p "${PKG}/addons/sourcemod/gamedata"
+          mkdir -p "${PKG}/addons/sourcemod/scripting/include"
+          find package -name "dodhooks.ext.*" -exec cp {} "${PKG}/addons/sourcemod/extensions/" \;
+          cp "${{ github.workspace }}/dodhooks/sourcemod/gamedata/dodhooks.txt" "${PKG}/addons/sourcemod/gamedata/"
+          cp "${{ github.workspace }}/dodhooks/sourcemod/scripting/include/dodhooks.inc" "${PKG}/addons/sourcemod/scripting/include/"
+          touch "${PKG}/addons/sourcemod/extensions/dodhooks.autoload"
+          echo "DoDHooks Extension" > "${PKG}/VERSION.txt"
+          echo "Build Date: $(date -u +%Y-%m-%d)" >> "${PKG}/VERSION.txt"
+          echo "Architecture: ${{ matrix.target }}" >> "${PKG}/VERSION.txt"
+          echo "SourceMod Branch: ${{ env.SM_BRANCH }}" >> "${PKG}/VERSION.txt"
+          echo "Metamod Branch: ${{ env.MMSOURCE_BRANCH }}" >> "${PKG}/VERSION.txt"
+          cd "${PKG}"
+          zip -r "${{ github.workspace }}/dodhooks-linux-${{ matrix.target }}.zip" .
+
+      - name: Upload artifact (Linux ${{ matrix.target }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: dodhooks-linux-${{ matrix.target }}
+          path: dodhooks-linux-${{ matrix.target }}.zip
+          retention-days: 30
+
+  build-windows:
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86
+            arch: x86
+            vs_arch: x86
+          - target: x86_64
+            arch: x64
+            vs_arch: x64
+
+    name: Windows ${{ matrix.target }}
+
+    steps:
+      - name: Checkout DoDHooks
+        uses: actions/checkout@v4
+        with:
+          path: dodhooks
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "AMBuild==2.2.0"
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.vs_arch }}
+
+      - name: Checkout SourceMod
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/sourcemod
+          ref: ${{ env.SM_BRANCH }}
+          path: sourcemod
+          submodules: recursive
+
+      - name: Checkout Metamod:Source
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/metamod-source
+          ref: ${{ env.MMSOURCE_BRANCH }}
+          path: metamod-source
+          submodules: recursive
+
+      - name: Checkout HL2SDK for DoD:S
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/hl2sdk
+          ref: ${{ env.HL2SDK_DODS_BRANCH }}
+          path: hl2sdk-dods
+
+      - name: Configure (Windows ${{ matrix.target }})
+        working-directory: dodhooks
+        shell: cmd
+        run: |
+          if exist build rmdir /s /q build
+          mkdir build
+          cd build
+          python ..\configure.py ^
+            --sm-path="${{ github.workspace }}\sourcemod" ^
+            --mms-path="${{ github.workspace }}\metamod-source" ^
+            --hl2sdk-root="${{ github.workspace }}" ^
+            --enable-optimize ^
+            --targets=${{ matrix.target }}
+
+      - name: Build (Windows ${{ matrix.target }})
+        working-directory: dodhooks\build
+        shell: cmd
+        run: |
+          ambuild
+
+      - name: Package artifacts
+        working-directory: dodhooks\build
+        shell: pwsh
+        run: |
+          $pkg = "dodhooks-windows-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path "$pkg/addons/sourcemod/extensions"
+          New-Item -ItemType Directory -Force -Path "$pkg/addons/sourcemod/gamedata"
+          New-Item -ItemType Directory -Force -Path "$pkg/addons/sourcemod/scripting/include"
+          Get-ChildItem -Path "package" -Filter "dodhooks.ext.*" | Copy-Item -Destination "$pkg/addons/sourcemod/extensions/"
+          Copy-Item "${{ github.workspace }}\dodhooks\sourcemod\gamedata\dodhooks.txt" "$pkg/addons/sourcemod/gamedata/"
+          Copy-Item "${{ github.workspace }}\dodhooks\sourcemod\scripting\include\dodhooks.inc" "$pkg/addons/sourcemod/scripting/include/"
+          New-Item -ItemType File -Path "$pkg/addons/sourcemod/extensions/dodhooks.autoload" -Force
+          "DoDHooks Extension" | Out-File -FilePath "$pkg/VERSION.txt" -Encoding utf8
+          "Build Date: $(Get-Date -Format 'yyyy-MM-dd')" | Out-File -FilePath "$pkg/VERSION.txt" -Append -Encoding utf8
+          "Architecture: ${{ matrix.target }}" | Out-File -FilePath "$pkg/VERSION.txt" -Append -Encoding utf8
+          "SourceMod Branch: ${{ env.SM_BRANCH }}" | Out-File -FilePath "$pkg/VERSION.txt" -Append -Encoding utf8
+          "Metamod Branch: ${{ env.MMSOURCE_BRANCH }}" | Out-File -FilePath "$pkg/VERSION.txt" -Append -Encoding utf8
+          Compress-Archive -Path "$pkg/*" -DestinationPath "${{ github.workspace }}\dodhooks-windows-${{ matrix.target }}.zip" -Force
+
+      - name: Upload artifact (Windows ${{ matrix.target }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: dodhooks-windows-${{ matrix.target }}
+          path: dodhooks-windows-${{ matrix.target }}.zip
+          retention-days: 30
+
+  release:
+    needs: [build-linux, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create combined release
+        run: |
+          mkdir -p release/addons/sourcemod/extensions
+          mkdir -p release/addons/sourcemod/gamedata
+          mkdir -p release/addons/sourcemod/scripting/include
+          find artifacts -name "dodhooks.ext.*" -exec cp {} release/addons/sourcemod/extensions/ \;
+          find artifacts -name "dodhooks.txt" -exec cp {} release/addons/sourcemod/gamedata/ \;
+          find artifacts -name "dodhooks.inc" -exec cp {} release/addons/sourcemod/scripting/include/ \;
+          find artifacts -name "dodhooks.autoload" -exec cp {} release/addons/sourcemod/extensions/ \;
+          cat > release/README.txt << 'EOF'
+          DoDHooks - SourceMod Extension for Day of Defeat: Source
+          ========================================================
+
+          Installation:
+          1. Copy the contents of addons/ to your server's addons/ folder
+          2. Restart your server or change map
+
+          Requires SourceMod 1.12 or higher.
+          EOF
+          cd release
+          zip -r ${{ github.workspace }}/dodhooks-full-release.zip .
+
+      - name: Upload combined release
+        uses: actions/upload-artifact@v4
+        with:
+          name: dodhooks-full-release
+          path: dodhooks-full-release.zip
+          retention-days: 90
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dodhooks-full-release.zip
+          body: |
+            DoDHooks v${{ github.ref_name }}
+
+            ## Build Matrix
+            - Windows x86 (32-bit) - MSVC
+            - Windows x86_64 (64-bit) - MSVC
+            - Linux x86 (32-bit) - GCC 9
+            - Linux x86_64 (64-bit) - GCC 9
+
+            ## Installation
+            1. Download `dodhooks-full-release.zip`
+            2. Extract to your server's `addons/` folder
+            3. Restart server
+
