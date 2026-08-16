@@ -2,7 +2,7 @@
 
 > **SourceMod Extension with Detours & Natives for Day of Defeat: Source**
 
-[![CI](https://github.com/DNA-styx/dodhooks/workflows/CI/badge.svg)](https://github.com/DNA-styx/dodhooks/actions)
+[![CI](https://github.com/kittenks/dodhooks-modified/workflows/CI/badge.svg)](https://github.com/kittenks/dodhooks-modified/actions)
 
 ## About
 
@@ -60,8 +60,8 @@ python -m pip install --upgrade git+https://github.com/alliedmodders/ambuild.git
 
 ```bash
 # Clone the repository
-git clone https://github.com/DNA-styx/dodhooks.git
-cd dodhooks
+git clone https://github.com/kittenks/dodhooks-modified.git
+cd dodhooks-modified
 
 # Clone dependencies
 git clone --depth 1 --recurse-submodules -b 1.12-dev https://github.com/alliedmodders/metamod-source.git mmsource
@@ -98,8 +98,8 @@ ambuild
 ```powershell
 # Open "Developer Command Prompt for VS" or run vcvars32.bat
 
-git clone https://github.com/DNA-styx/dodhooks.git
-cd dodhooks
+git clone https://github.com/kittenks/dodhooks-modified.git
+cd dodhooks-modified
 
 git clone --depth 1 --recurse-submodules -b 1.12-dev https://github.com/alliedmodders/metamod-source.git mmsource
 git clone --depth 1 --recurse-submodules -b 1.12-dev https://github.com/alliedmodders/sourcemod.git sourcemod
@@ -255,5 +255,5 @@ GPL v2 - See [LICENSE](LICENSE) for details.
 - **Andersso** - Original author
 - **ChesterSmitty** - Previous maintainer
 - **Apfelwurm** - CI improvements
-- **DNA-styx** - Current maintainer, 1.12/1.13 updates
+- **DNA-styx** - Upstream maintainer (1.12/1.13 updates)
 - **AlliedModders** - SourceMod, Metamod:Source, AMBuild

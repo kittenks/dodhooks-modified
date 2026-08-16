@@ -2,15 +2,15 @@
 
 ## 项目简介
 
-DODHooks 是一个为 **Day of Defeat: Source**（胜利之日：起源）游戏服务器提供的 SourceMod 扩展，它通过函数钩子（Detours）和原生函数（Natives）让插件开发者能够拦截和修改游戏内部行为。
+DODHooks 是一个为 **Day of Defeat: Source**（胜利之日：起源）游戏服务器提供的 SourceMod 扩展，它通过函数钩子（Detours）和原生函数（Natives）让插件开发者能够在插件中控制和扩展游戏行为。
 
 ### 主要功能
 
 | 类别 | 内容 |
 |------|------|
-| 钩子（Detours） | 语音命令、加入兵种、头盔弹飞、重生、加时、设置获胜队伍、回合状态、玩家状态、炸弹目标状态 |
+| 钩子（Detours） | 语音命令、加入兵种、头盔弹飞、重生、波次时间/加时、设置获胜队伍、回合状态、玩家状态、炸弹目标状态 |
 | 原生函数（Natives） | 获取/设置玩家兵种、控制点图标管理、计时器控制、强制重生、设置回合状态 |
-| 转发（Forwards） | 上述所有事件的插件级回调钩子 |
+| 转发（Forwards） | 上述事件的插件级回调钩子，供 SourcePawn 插件使用 |
 
 ### 与原版的区别
 
@@ -31,10 +31,10 @@ DODHooks 是一个为 **Day of Defeat: Source**（胜利之日：起源）游戏
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/DNA-styx/dodhooks.git
-cd dodhooks
+git clone https://github.com/kittenks/dodhooks-modified.git
+cd dodhooks-modified
 
-# 2. 设置依赖
+# 2. 设置依赖（若仓库提供该脚本）
 chmod +x setup_dependencies.sh
 ./setup_dependencies.sh
 
@@ -65,8 +65,8 @@ sudo apt-get install -y build-essential clang-22 python3 python3-pip git
 pip3 install --upgrade git+https://github.com/alliedmodders/ambuild.git
 
 # 2. 克隆仓库和依赖
-git clone https://github.com/DNA-styx/dodhooks.git
-cd dodhooks
+git clone https://github.com/kittenks/dodhooks-modified.git
+cd dodhooks-modified
 ./setup_dependencies.sh
 
 # 3. 配置和构建
@@ -93,8 +93,8 @@ ambuild
 python -m pip install --upgrade git+https://github.com/alliedmodders/ambuild.git
 
 # 3. 克隆仓库
-git clone https://github.com/DNA-styx/dodhooks.git
-cd dodhooks
+git clone https://github.com/kittenks/dodhooks-modified.git
+cd dodhooks-modified
 
 # 4. 设置依赖
 git clone --depth 1 -b 1.12-dev https://github.com/alliedmodders/metamod-source.git mmsource
@@ -145,7 +145,7 @@ dodhooks/
 │   ├── gamedata/
 │   │   └── dodhooks.txt       # 游戏数据签名文件
 │   ├── public/
-│   │   └── README.md         # SourceMod 公共头文件说明
+│   │   └── README.md          # SourceMod 公共头文件说明
 │   └── scripting/
 │       ├── include/
 │       │   └── dodhooks.inc   # SourcePawn 插件头文件
@@ -158,7 +158,7 @@ dodhooks/
 ├── LICENSE                   # GPL v2 许可证
 ├── PackageScript             # 打包脚本
 ├── README.md                 # 英文文档
-├── README_zh.md             # 本文件 - 中文文档
+├── README_zh.md              # 本文件 - 中文文档
 ├── build.sh                  # Linux 一键构建脚本
 ├── build.bat                 # Windows 一键构建脚本
 ├── configure.py              # 配置脚本（AMBuild 入口）
@@ -168,9 +168,9 @@ dodhooks/
 ├── extension.cpp             # 扩展主实现
 ├── natives.h                 # 原生函数声明
 ├── natives.cpp               # 原生函数实现
-├── vglobals.h               # Valve 全局变量接口
-├── vglobals.cpp             # Valve 全局变量实现
-└── smsdk_config.h           # 扩展配置（名称、版本等）
+├── vglobals.h                # Valve 全局变量接口
+├── vglobals.cpp              # Valve 全局变量实现
+└── smsdk_config.h            # 扩展配置（名称、版本等）
 ```
 
 ---
@@ -181,10 +181,10 @@ dodhooks/
 A: 确保已运行 `setup_dependencies.sh` 或手动克隆了 SourceMod 到 `sourcemod/` 目录。
 
 ### Q: 64 位构建后服务器崩溃
-A: 检查 gamedata 文件中的签名是否匹配你的游戏版本。64 位下的函数签名与 32 位不同。
+A: 检查 gamedata 文件中的签名是否匹配你的游戏版本。64 位下的函数签名与 32 位不同，可能需要针对目标游戏版本调整签名。
 
 ### Q: 如何切换 SourceMod 版本？
-A: 修改 `setup_dependencies.sh` 中的分支参数，或在克隆时指定分支：
+A: 修改 `setup_dependencies.sh` 中的分支参数，或在克隆时指定分支，例如：
 ```bash
 git clone --depth 1 -b master https://github.com/alliedmodders/sourcemod.git sourcemod
 ```
