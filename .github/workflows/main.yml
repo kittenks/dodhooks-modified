@@ -1,123 +1,98 @@
-runs-on: ${{ matrix.os }}
+name: Build
 
-steps:
-  # 1. 检出当前仓库代码
-  - name: Checkout source
-    uses: actions/checkout@v4
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
 
-  # 2. 检出依赖项 (SourceMod, MM, SDK, AMBuild)
-  - name: Checkout SourceMod
-    uses: actions/checkout@v4
-    with:
-      repository: alliedmodders/sourcemod
-      path: sourcemod
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            arch: x86_64
+            cc: gcc
+            cxx: g++
+            msvc_arch: ""
+          - os: windows-2022
+            arch: x86_64
+            cc: cl
+            cxx: cl
+            msvc_arch: x64
 
-  - name: Checkout MetaMod:Source
-    uses: actions/checkout@v4
-    with:
-      repository: alliedmodders/metamod-source
-      path: mmsource
+    runs-on: ${{ matrix.os }}
 
-  - name: Checkout hl2sdk-dods
-    uses: actions/checkout@v4
-    with:
-      repository: alliedmodders/hl2sdk
-      ref: dods
-      path: hl2sdk-dods
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-  - name: Checkout AMBuild
-    uses: actions/checkout@v4
-    with:
-      repository: alliedmodders/ambuild
-      path: ambuild
+      - name: Checkout SourceMod
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/sourcemod
+          ref: 1.12-dev
+          path: sourcemod
 
-  # 3. 设置 Python 3.11
-  - name: Set up Python
-    uses: actions/setup-python@v5
-    with:
-      python-version: "3.11"
+      - name: Checkout MetaMod:Source
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/metamod-source
+          ref: 1.11-dev
+          path: mmsource
 
-  # 4. 【核心修复】安装特定版本的 AMBuild
-  # 指定安装 2.2.0 版本，该版本与你代码中的 API 兼容
-  - name: Install AMBuild
-    run: pip install ./ambuild==2.2.0
+      - name: Checkout hl2sdk-dods
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/hl2sdk
+          ref: dods
+          path: hl2sdk-dods
 
-  # 5. Linux x86 额外依赖
-  - name: Install Linux x86 dependencies
-    if: runner.os == 'Linux' && matrix.arch == 'x86'
-    run: |
-      sudo dpkg --add-architecture i386
-      sudo apt-get update
-      sudo apt-get install -y --no-install-recommends \
-        gcc-multilib g++-multilib lib32stdc++6 \
-        zlib1g-dev zlib1g-dev:i386 libc6-dev-i386 linux-libc-dev:i386
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-  # 6. 设置 MSVC (仅 Windows)
-  - name: Setup MSVC
-    if: runner.os == 'Windows'
-    uses: ilammy/msvc-dev-cmd@v1
-    with:
-      arch: ${{ matrix.arch == 'x86' && 'x86' || 'x64' }}
+      # ✅ 直接装 PyPI 上的稳定版，不拉源码目录，版本锁死
+      - name: Install AMBuild 2.2.0
+        run: pip install ambuild==2.2.0
 
-  # 7. Linux 配置
-  - name: Configure (Linux)
-    if: runner.os == 'Linux'
-    working-directory: src
-    run: |
-      rm -rf build
-      mkdir build && cd build
-      python3 ../configure.py \
-        --targets=${{ matrix.arch }} \
-        --enable-optimize \
-        --sm-path=$GITHUB_WORKSPACE/sourcemod \
-        --mms-path=$GITHUB_WORKSPACE/mmsource \
-        --hl2sdk-root=$GITHUB_WORKSPACE \
-        --sdks=dod
+      - name: Install Linux deps
+        if: runner.os == 'Linux' && matrix.arch == 'x86_64'
+        run: sudo apt-get update && sudo apt-get install -y clang libc6-dev
 
-  # 8. Windows 配置
-  - name: Configure (Windows)
-    if: runner.os == 'Windows'
-    working-directory: src
-    shell: cmd
-    run: |
-      if exist build rmdir /s /q build
-      mkdir build && cd build
-      python ../configure.py ^
-        --targets=${{ matrix.arch }} ^
-        --enable-optimize ^
-        --sm-path=%GITHUB_WORKSPACE%\sourcemod ^
-        --mms-path=%GITHUB_WORKSPACE%\mmsource ^
-        --hl2sdk-root=%GITHUB_WORKSPACE% ^
-        --sdks=dod
+      - name: Setup MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
 
-  # 9. 编译
-  - name: Build
-    working-directory: src/build
-    run: ambuild
-
-  # 10. 上传产物
-  - name: Upload artifact
-    uses: actions/upload-artifact@v4
-    with:
-      name: dodhooks-${{ runner.os }}-${{ matrix.arch }}
-      path: src/build/package/*
-      if-no-files-found: error
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        working-directory: src
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          rm -rf build
+          mkdir build && cd build
+          python3 ../configure.py \
+            --targets=${{ matrix.arch }} \
+            --enable-optimize \
             --sm-path=$GITHUB_WORKSPACE/sourcemod \
             --mms-path=$GITHUB_WORKSPACE/mmsource \
             --hl2sdk-root=$GITHUB_WORKSPACE \
             --sdks=dod
-          test -f .ambuild2/vars || { echo "configure failed"; exit 1; }
 
-      - name: Build (Linux)
-        if: runner.os == 'Linux'
-        working-directory: src/build
-        run: ambuild
-
-      # ─── Windows Configure + Build ───
       - name: Configure (Windows)
         if: runner.os == 'Windows'
-        shell: cmd
         working-directory: src
+        shell: cmd
         run: |
           if exist build rmdir /s /q build
           mkdir build && cd build
@@ -128,15 +103,8 @@ steps:
             --mms-path=%GITHUB_WORKSPACE%\mmsource ^
             --hl2sdk-root=%GITHUB_WORKSPACE% ^
             --sdks=dod
-          if errorlevel 1 exit /b 1
-          if not exist .ambuild2\vars (
-            echo configure did not produce .ambuild2\vars
-            exit /b 1
-          )
 
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
+      - name: Build
         working-directory: src/build
         run: ambuild
 
@@ -146,20 +114,3 @@ steps:
           name: dodhooks-${{ runner.os }}-${{ matrix.arch }}
           path: src/build/package/*
           if-no-files-found: error
-
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-      - name: Zip per target
-        run: |
-          cd artifacts
-          for d in dodhooks-*; do zip -r "../$d.zip" "$d"; done
-          cd ..
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dodhooks-*.zip
