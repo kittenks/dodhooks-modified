@@ -1,0 +1,41 @@
+version: '3.8'
+
+DoDHooks Docker Compose Build Configuration
+
+Usage:
+
+docker-compose up --build
+
+Output will be in ./output/ directory
+
+services:
+
+Linux x86 + x86_64 build
+
+linux-builder:
+build:
+context: ..
+dockerfile: docker/Dockerfile.linux
+container_name: dodhooks-linux-builder
+volumes:
+- ./output:/output
+environment:
+- BUILD_TYPE=linux
+restart: "no"
+
+Windows build (cross-compile reference)
+
+For actual Windows builds, use GitHub Actions
+
+windows-builder:
+build:
+context: ..
+dockerfile: docker/Dockerfile.windows
+container_name: dodhooks-windows-builder
+volumes:
+- ./output:/output
+environment:
+- BUILD_TYPE=windows
+restart: "no"
+profiles:
+- windows  # Disabled by default, use: docker-compose --profile windows up
