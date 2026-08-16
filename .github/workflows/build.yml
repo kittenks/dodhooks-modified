@@ -74,12 +74,10 @@ jobs:
           ref: ${{ env.HL2SDK_DODS_BRANCH }}
           path: hl2sdk-dods
 
-      # 不使用actions/checkout，脚本git clone完整仓库，检出tag 2.2.0
+      # 直接clone并且锁定tag 2.2.0，无--depth参数，windows/linux兼容
       - name: Clone AMBuild tag 2.2.0
         run: |
-          git clone --depth 0 https://github.com/alliedmodders/ambuild.git ambuild
-          cd ambuild
-          git checkout tags/${{ env.AMBUILD_TAG }}
+          git clone --branch 2.2.0 https://github.com/alliedmodders/ambuild.git ambuild
 
       - name: Set up Python
         uses: actions/setup-python@v5
