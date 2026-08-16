@@ -1,166 +1,141 @@
 @echo off
 REM ============================================================
-REM DoDHooks - Windows Build Script
-REM For SourceMod 1.12 / 1.13
-REM Supports: x86 (32-bit) and x86_64 (64-bit)
+REM DoDHooks Windows Build Script
+REM Usage: scripts\build-windows.bat [x86^|x86_64^|all]
+REM Requirements:
+REM   - Visual Studio 2019 or 2022 with C++ tools
+REM   - Python 3.11
+REM   - AMBuild 2.2.0 (pip install "AMBuild==2.2.0")
+REM   - Git
+REM
+REM Environment variables (set these before running):
+REM   SM_ROOT     - Path to SourceMod source
+REM   MM_ROOT     - Path to Metamod:Source source
+REM   HL2SDK_ROOT - Parent directory of hl2sdk-dods
 REM ============================================================
+
 setlocal EnableDelayedExpansion
 
-REM ---- Configuration ----
-set SM_BRANCH=1.12-dev
-set MMS_BRANCH=1.12-dev
-set HL2SDK_BRANCH=master
+set "SCRIPT_DIR=%~dp0"
+set "PROJECT_ROOT=%SCRIPT_DIR%.."
+set "TARGET=%~1"
+if "%TARGET%"=="" set "TARGET=x86_64"
 
-REM ---- Parse arguments ----
-set TARGET=x86
-if not "%~1"=="" set TARGET=%~1
+REM ============================================================
+REM Default paths (override via environment variables)
+REM ============================================================
+if "%SM_ROOT%"==""     set "SM_ROOT=%USERPROFILE%\sourcemod"
+if "%MM_ROOT%"==""     set "MM_ROOT=%USERPROFILE%\metamod-source"
+if "%HL2SDK_ROOT%"=="" set "HL2SDK_ROOT=%USERPROFILE%"
 
 echo ============================================================
 echo  DoDHooks Windows Build Script
+echo  Project root: %PROJECT_ROOT%
 echo  Target: %TARGET%
 echo ============================================================
 echo.
 
-REM ---- Check Python ----
+REM ============================================================
+REM Check dependencies
+REM ============================================================
+echo [*] Checking dependencies...
+
 where python >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Python not found in PATH
-    echo Please install Python 3.8+ and add to PATH
+    echo [X] python not found in PATH
+    echo     Install from https://www.python.org/downloads/
     exit /b 1
 )
+echo [✓] python found
 
-REM ---- Check Git ----
-where git >nul 2>&1
+python -c "import ambuild2" 2>nul
 if errorlevel 1 (
-    echo [ERROR] Git not found in PATH
-    echo Please install Git and add to PATH
+    echo [!] AMBuild not found. Installing...
+    pip install "AMBuild==2.2.0"
+    if errorlevel 1 (
+        echo [X] Failed to install AMBuild
+        exit /b 1
+    )
+)
+echo [✓] AMBuild found
+
+if not exist "%SM_ROOT%" (
+    echo [X] SourceMod not found at: %SM_ROOT%
+    echo     Set SM_ROOT environment variable
+    echo     Or clone: git clone -b 1.12-dev https://github.com/alliedmodders/sourcemod
     exit /b 1
 )
+echo [✓] SourceMod found: %SM_ROOT%
 
-REM ---- Install AMBuild if needed ----
-python -c "import ambuild" 2>nul
-if errorlevel 1 (
-    echo [INFO] Installing AMBuild...
-    python -m pip install --upgrade pip
-    python -m pip install ambuild
+if not exist "%MM_ROOT%" (
+    echo [X] Metamod:Source not found at: %MM_ROOT%
+    echo     Set MM_ROOT environment variable
+    echo     Or clone: git clone -b 1.12-dev https://github.com/alliedmodders/metamod-source
+    exit /b 1
 )
+echo [✓] Metamod:Source found: %MM_ROOT%
 
-REM ---- Setup directories ----
-set ROOT=%CD%
-set DEPS=%ROOT%\deps
-set BUILD=%ROOT%\build-%TARGET%
-
-if not exist "%DEPS%" mkdir "%DEPS%"
-if exist "%BUILD%" rmdir /s /q "%BUILD%"
-mkdir "%BUILD%"
-
-cd /d "%DEPS%"
-
-REM ---- Clone SourceMod ----
-if not exist "sourcemod" (
-    echo [INFO] Cloning SourceMod...
-    git clone --depth 1 --branch %SM_BRANCH% https://github.com/alliedmodders/sourcemod.git
-) else (
-    echo [INFO] SourceMod already cloned, updating...
-    cd sourcemod
-    git fetch --depth 1 origin %SM_BRANCH%
-    git checkout %SM_BRANCH%
-    git pull origin %SM_BRANCH%
-    cd ..
+if not exist "%HL2SDK_ROOT%\hl2sdk-dods" (
+    echo [X] HL2SDK DoD:S not found at: %HL2SDK_ROOT%\hl2sdk-dods
+    echo     Clone with: git clone -b dods https://github.com/alliedmodders/hl2sdk hl2sdk-dods
+    exit /b 1
 )
-
-REM ---- Clone Metamod:Source ----
-if not exist "metamod-source" (
-    echo [INFO] Cloning Metamod:Source...
-    git clone --depth 1 --branch %MMS_BRANCH% https://github.com/alliedmodders/metamod-source.git
-) else (
-    echo [INFO] Metamod:Source already cloned, updating...
-    cd metamod-source
-    git fetch --depth 1 origin %MMS_BRANCH%
-    git checkout %MMS_BRANCH%
-    git pull origin %MMS_BRANCH%
-    cd ..
-)
-
-REM ---- Clone HL2SDK for DoD:S ----
-if not exist "hl2sdk-dods" (
-    echo [INFO] Cloning HL2SDK...
-    git clone --depth 1 --branch %HL2SDK_BRANCH% https://github.com/alliedmodders/hl2sdk.git hl2sdk-dods
-) else (
-    echo [INFO] HL2SDK already cloned, updating...
-    cd hl2sdk-dods
-    git fetch --depth 1 origin %HL2SDK_BRANCH%
-    git checkout %HL2SDK_BRANCH%
-    git pull origin %HL2SDK_BRANCH%
-    cd ..
-)
-
-cd /d "%BUILD%"
-
-REM ---- Configure ----
+echo [✓] HL2SDK DoD:S found: %HL2SDK_ROOT%\hl2sdk-dods
 echo.
-echo [INFO] Configuring build for %TARGET%...
-python "%ROOT%\configure.py" ^
-    --sm-path="%DEPS%\sourcemod" ^
-    --mms-path="%DEPS%\metamod-source" ^
-    --hl2sdk-root="%DEPS%" ^
+
+REM ============================================================
+REM Build function
+REM ============================================================
+call :build_target %TARGET%
+if errorlevel 1 exit /b 1
+
+echo.
+echo ============================================================
+echo  Build complete!
+echo ============================================================
+goto :eof
+
+:build_target
+set "arch=%~1"
+echo [*] Building for %arch%...
+
+cd /d "%PROJECT_ROOT%"
+
+REM Clean
+if exist "build_%arch%" rmdir /s /q "build_%arch%"
+mkdir "build_%arch%"
+cd "build_%arch%"
+
+REM Configure
+echo [*] Configuring (%arch%)...
+python ..\configure.py ^
+    --targets=%arch% ^
     --enable-optimize ^
-    --targets=%TARGET%
+    --sm-path="%SM_ROOT%" ^
+    --mms-path="%MM_ROOT%" ^
+    --hl2sdk-root="%HL2SDK_ROOT%" ^
+    --sdks=dod
 
 if errorlevel 1 (
-    echo [ERROR] Configuration failed
+    echo [X] Configure failed for %arch%
     exit /b 1
 )
+echo [✓] Configure successful (%arch%)
 
-REM ---- Build ----
-echo.
-echo [INFO] Building...
+REM Build
+echo [*] Compiling (%arch%)...
 ambuild
-
 if errorlevel 1 (
-    echo [ERROR] Build failed
+    echo [X] Build failed for %arch%
     exit /b 1
 )
+echo [✓] Build successful (%arch%)
 
-REM ---- Package ----
-echo.
-echo [INFO] Packaging...
-set PKG_DIR=%BUILD%\dodhooks-%TARGET%
-if exist "%PKG_DIR%" rmdir /s /q "%PKG_DIR%"
-
-mkdir "%PKG_DIR%\addons\sourcemod\extensions"
-mkdir "%PKG_DIR%\addons\sourcemod\gamedata"
-mkdir "%PKG_DIR%\addons\sourcemod\scripting\include"
-
-REM Copy extension binary
-for %%f in (package\dodhooks.ext.*) do (
-    copy "%%f" "%PKG_DIR%\addons\sourcemod\extensions\" >nul
+REM Show output
+if exist "package\dodhooks.ext.dll" (
+    echo [✓] Artifact: package\dodhooks.ext.dll
+    dir "package\dodhooks.ext.dll"
 )
 
-REM Copy gamedata
-copy "%ROOT%\sourcemod\gamedata\dodhooks.txt" "%PKG_DIR%\addons\sourcemod\gamedata\" >nul
-
-REM Copy include
-copy "%ROOT%\sourcemod\scripting\include\dodhooks.inc" "%PKG_DIR%\addons\sourcemod\scripting\include\" >nul
-
-REM Create autoload
-type nul > "%PKG_DIR%\addons\sourcemod\extensions\dodhooks.autoload"
-
-REM Create version info
-echo DoDHooks Extension > "%PKG_DIR%\VERSION.txt"
-echo Build Date: %date% >> "%PKG_DIR%\VERSION.txt"
-echo Architecture: %TARGET% >> "%PKG_DIR%\VERSION.txt"
-echo Platform: Windows >> "%PKG_DIR%\VERSION.txt"
-
-REM Create ZIP
-cd "%PKG_DIR%"
-powershell -command "Compress-Archive -Path * -DestinationPath '%ROOT%\dodhooks-windows-%TARGET%.zip' -Force"
-
-echo.
-echo ============================================================
-echo  BUILD COMPLETE
-echo ============================================================
-echo  Output: dodhooks-windows-%TARGET%.zip
-echo ============================================================
-
-endlocal
+cd /d "%PROJECT_ROOT%"
+exit /b 0

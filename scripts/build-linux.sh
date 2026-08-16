@@ -1,175 +1,181 @@
 #!/bin/bash
 # ============================================================
-# DoDHooks - Linux Build Script
-# For SourceMod 1.12 / 1.13
-# Supports: x86 (32-bit) and x86_64 (64-bit)
+# DoDHooks Linux Build Script
+# Usage:  ./scripts/build-linux.sh [x86|x86_64|all]
 # ============================================================
 
 set -e
 
-# ---- Configuration ----
-SM_BRANCH="${SM_BRANCH:-1.12-dev}"
-MMS_BRANCH="${MMS_BRANCH:-1.12-dev}"
-HL2SDK_BRANCH="${HL2SDK_BRANCH:-master}"
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-# Default to x86_64, can be overridden
-TARGET="${1:-x86_64}"
+print_status() { echo -e "${BLUE}[*]${NC} $1"; }
+print_ok()     { echo -e "${GREEN}[✓]${NC} $1"; }
+print_warn()   { echo -e "${YELLOW}[!]${NC} $1"; }
+print_error()  { echo -e "${RED}[✗]${NC} $1"; }
 
-# Compiler selection
-CC="${CC:-gcc-9}"
-CXX="${CXX:-g++-9}"
+# ============================================================
+# Configuration
+# ============================================================
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+BUILD_TYPE="release"
+TARGETS="${1:-x86_64}"
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DEPS="${ROOT}/deps"
-BUILD="${ROOT}/build-${TARGET}"
+# Dependency paths (adjust these to your environment)
+SM_ROOT="${SM_ROOT:-$HOME/sourcemod}"
+MM_ROOT="${MM_ROOT:-$HOME/metamod-source}"
+HL2SDK_ROOT="${HL2SDK_ROOT:-$HOME}"
+HL2SDK_DODS="${HL2SDK_ROOT}/hl2sdk-dods"
 
-echo "============================================================"
-echo " DoDHooks Linux Build Script"
-echo " Target: ${TARGET}"
-echo " Compiler: ${CC} / ${CXX}"
-echo "============================================================"
+print_status "DoDHooks Linux Build Script"
+print_status "Project root: $PROJECT_ROOT"
+print_status "Targets: $TARGETS"
 echo ""
 
-# ---- Check dependencies ----
-check_cmd() {
-    if ! command -v "$1" >/dev/null 2>&1; then
-        echo "[ERROR] $1 not found. Please install it first."
-        exit 1
+# ============================================================
+# Check dependencies
+# ============================================================
+print_status "Checking dependencies..."
+
+if ! command -v python3 &>/dev/null; then
+    print_error "python3 not found. Install with: sudo apt-get install python3"
+    exit 1
+fi
+print_ok "python3 found"
+
+if ! python3 -c "import ambuild2" 2>/dev/null; then
+    print_warn "AMBuild not found. Installing..."
+    pip3 install "AMBuild==2.2.0"
+fi
+print_ok "AMBuild found"
+
+if [ ! -d "$SM_ROOT" ]; then
+    print_error "SourceMod not found at: $SM_ROOT"
+    print_error "Set SM_ROOT environment variable or clone to $HOME/sourcemod"
+    exit 1
+fi
+print_ok "SourceMod found: $SM_ROOT"
+
+if [ ! -d "$MM_ROOT" ]; then
+    print_error "Metamod:Source not found at: $MM_ROOT"
+    print_error "Set MM_ROOT environment variable or clone to $HOME/metamod-source"
+    exit 1
+fi
+print_ok "Metamod:Source found: $MM_ROOT"
+
+if [ ! -d "$HL2SDK_DODS" ]; then
+    print_error "HL2SDK DoD:S not found at: $HL2SDK_DODS"
+    print_error "Clone with: git clone -b dods https://github.com/alliedmodders/hl2sdk hl2sdk-dods"
+    exit 1
+fi
+print_ok "HL2SDK DoD:S found: $HL2SDK_DODS"
+
+# ============================================================
+# Install 32-bit libraries if needed
+# ============================================================
+if [[ "$TARGETS" == *"x86"* ]] && ! dpkg --print-foreign-architectures 2>/dev/null | grep -q i386; then
+    print_status "Installing 32-bit support libraries..."
+    sudo dpkg --add-architecture i386
+    sudo apt-get update
+    sudo apt-get install -y --no-install-recommends \
+        gcc-multilib g++-multilib lib32stdc++6 \
+        zlib1g-dev zlib1g-dev:i386 libc6-dev-i386 linux-libc-dev:i386
+    print_ok "32-bit libraries installed"
+fi
+
+# ============================================================
+# Build function
+# ============================================================
+build_target() {
+    local arch="$1"
+    print_status "Building for $arch..."
+
+    cd "$PROJECT_ROOT"
+
+    # Clean previous build
+    rm -rf "build_$arch"
+    mkdir -p "build_$arch"
+    cd "build_$arch"
+
+    # Configure
+    print_status "Configuring ($arch)..."
+    python3 ../configure.py \
+        --targets="$arch" \
+        --enable-optimize \
+        --sm-path="$SM_ROOT" \
+        --mms-path="$MM_ROOT" \
+        --hl2sdk-root="$HL2SDK_ROOT" \
+        --sdks=dod
+
+    if [ $? -ne 0 ]; then
+        print_error "Configure failed for $arch"
+        return 1
     fi
+    print_ok "Configure successful ($arch)"
+
+    # Build
+    print_status "Compiling ($arch)..."
+    ambuild
+
+    if [ $? -ne 0 ]; then
+        print_error "Build failed for $arch"
+        return 1
+    fi
+    print_ok "Build successful ($arch)"
+
+    # Show output
+    if [ -f "package/dodhooks.ext.so" ] || [ -f "package/dodhooks.ext.dll" ]; then
+        print_ok "Artifact created:"
+        ls -la package/
+    fi
+
+    cd "$PROJECT_ROOT"
+    return 0
 }
 
-check_cmd python3
-check_cmd git
-check_cmd "${CC}"
-check_cmd "${CXX}"
+# ============================================================
+# Execute builds
+# ============================================================
+FAILED=0
 
-# Check for AMBuild
-if ! python3 -c "import ambuild" 2>/dev/null; then
-    echo "[INFO] Installing AMBuild..."
-    python3 -m pip install --upgrade pip
-    python3 -m pip install ambuild
-fi
+case "$TARGETS" in
+    x86)
+        build_target "x86" || FAILED=1
+        ;;
+    x86_64)
+        build_target "x86_64" || FAILED=1
+        ;;
+    all)
+        build_target "x86" || FAILED=1
+        build_target "x86_64" || FAILED=1
+        ;;
+    *)
+        print_error "Unknown target: $TARGETS"
+        print_error "Usage: $0 [x86|x86_64|all]"
+        exit 1
+        ;;
+esac
 
-# ---- Install 32-bit libs if building x86 ----
-if [ "${TARGET}" = "x86" ]; then
-    echo "[INFO] Checking 32-bit libraries..."
-    if ! dpkg --print-foreign-architectures 2>/dev/null | grep -q i386; then
-        echo "[INFO] Adding i386 architecture..."
-        sudo dpkg --add-architecture i386
-        sudo apt-get update
-    fi
-    sudo apt-get install -y \
-        gcc-9-multilib g++-9-multilib \
-        lib32stdc++6 lib32z1-dev libc6-dev-i386 \
-        linux-libc-dev:i386 2>/dev/null || true
-fi
-
-# ---- Setup directories ----
-mkdir -p "${DEPS}"
-
-# ---- Clone/Update SourceMod ----
-cd "${DEPS}"
-if [ ! -d "sourcemod" ]; then
-    echo "[INFO] Cloning SourceMod..."
-    git clone --depth 1 --branch "${SM_BRANCH}" https://github.com/alliedmodders/sourcemod.git
+# ============================================================
+# Summary
+# ============================================================
+echo ""
+if [ $FAILED -eq 0 ]; then
+    print_ok "All builds completed successfully!"
+    echo ""
+    print_status "Package contents:"
+    for d in build_*/package; do
+        if [ -d "$d" ]; then
+            echo "  $d/:"
+            ls -la "$d/" | awk '{print "    "$NF}'
+        fi
+    done
 else
-    echo "[INFO] Updating SourceMod..."
-    cd sourcemod
-    git fetch --depth 1 origin "${SM_BRANCH}"
-    git checkout "${SM_BRANCH}"
-    git pull origin "${SM_BRANCH}"
-    cd ..
+    print_error "Some builds failed. Check the logs above."
+    exit 1
 fi
-
-# ---- Clone/Update Metamod:Source ----
-if [ ! -d "metamod-source" ]; then
-    echo "[INFO] Cloning Metamod:Source..."
-    git clone --depth 1 --branch "${MMS_BRANCH}" https://github.com/alliedmodders/metamod-source.git
-else
-    echo "[INFO] Updating Metamod:Source..."
-    cd metamod-source
-    git fetch --depth 1 origin "${MMS_BRANCH}"
-    git checkout "${MMS_BRANCH}"
-    git pull origin "${MMS_BRANCH}"
-    cd ..
-fi
-
-# ---- Clone/Update HL2SDK ----
-if [ ! -d "hl2sdk-dods" ]; then
-    echo "[INFO] Cloning HL2SDK..."
-    git clone --depth 1 --branch "${HL2SDK_BRANCH}" https://github.com/alliedmodders/hl2sdk.git hl2sdk-dods
-else
-    echo "[INFO] Updating HL2SDK..."
-    cd hl2sdk-dods
-    git fetch --depth 1 origin "${HL2SDK_BRANCH}"
-    git checkout "${HL2SDK_BRANCH}"
-    git pull origin "${HL2SDK_BRANCH}"
-    cd ..
-fi
-
-# ---- Configure ----
-echo ""
-echo "[INFO] Configuring build for ${TARGET}..."
-cd "${ROOT}"
-
-if [ -d "${BUILD}" ]; then
-    rm -rf "${BUILD}"
-fi
-mkdir -p "${BUILD}"
-cd "${BUILD}"
-
-CC="${CC}" CXX="${CXX}" python3 "${ROOT}/configure.py" \
-    --sm-path="${DEPS}/sourcemod" \
-    --mms-path="${DEPS}/metamod-source" \
-    --hl2sdk-root="${DEPS}" \
-    --enable-optimize \
-    --targets="${TARGET}"
-
-# ---- Build ----
-echo ""
-echo "[INFO] Building..."
-ambuild
-
-# ---- Package ----
-echo ""
-echo "[INFO] Packaging..."
-PKG_DIR="${BUILD}/dodhooks-${TARGET}"
-rm -rf "${PKG_DIR}"
-mkdir -p "${PKG_DIR}/addons/sourcemod/extensions"
-mkdir -p "${PKG_DIR}/addons/sourcemod/gamedata"
-mkdir -p "${PKG_DIR}/addons/sourcemod/scripting/include"
-
-# Copy extension binary
-find "${BUILD}/package" -name "dodhooks.ext.*" -exec cp {} "${PKG_DIR}/addons/sourcemod/extensions/" \;
-
-# Copy gamedata
-cp "${ROOT}/sourcemod/gamedata/dodhooks.txt" "${PKG_DIR}/addons/sourcemod/gamedata/"
-
-# Copy include
-cp "${ROOT}/sourcemod/scripting/include/dodhooks.inc" "${PKG_DIR}/addons/sourcemod/scripting/include/"
-
-# Create autoload
-touch "${PKG_DIR}/addons/sourcemod/extensions/dodhooks.autoload"
-
-# Version info
-cat > "${PKG_DIR}/VERSION.txt" << EOF
-DoDHooks Extension
-Build Date: $(date -u +%Y-%m-%d)
-Architecture: ${TARGET}
-Platform: Linux
-SourceMod Branch: ${SM_BRANCH}
-Compiler: ${CC} / ${CXX}
-EOF
-
-# Create archive
-cd "${PKG_DIR}"
-ZIP_NAME="${ROOT}/dodhooks-linux-${TARGET}.zip"
-rm -f "${ZIP_NAME}"
-zip -r "${ZIP_NAME}" .
-
-echo ""
-echo "============================================================"
-echo " BUILD COMPLETE"
-echo "============================================================"
-echo " Output: dodhooks-linux-${TARGET}.zip"
-echo "============================================================"
