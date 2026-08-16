@@ -32,6 +32,10 @@ class DODHooksConfig(object):
         self.mms_root = None
         self.sm_root = None
         self.extensions = []
+        # Ensure sdks attribute exists so build scripts can iterate safely.
+        # Some callers expect DODHooks.sdks to be present; initialize to an
+        # empty dict and allow AMBuilder to fallback when necessary.
+        self.sdks = {}
 
         # Detect target architecture
         if builder.options.target:
