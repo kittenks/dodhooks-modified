@@ -1,90 +1,106 @@
-# vim: set sts=2 ts=8 sw=2 tw=99 et ft=python:
+# -*- coding: utf-8 -*-
 """
-DoDHooks - AMBuild Script
-Updated for SourceMod 1.12 / 1.13
-Supports: Windows (x86, x64), Linux (x86, x64)
+DoDHooks AMBuildScript
+Generates the C++ extension using AMBuild 2.2
 """
 
-import os, sys, platform
+from ambuild2 import Extension
+import os
 
-projectName = 'dodhooks'
+builder = getbuilder()
 
-# ---- Source files ----
-# smsdk_ext.cpp is automatically added by the build system
-sourceFiles = [
+# ============================================================
+# Project definition
+# ============================================================
+project = Extension.HL2Project(builder, 'dodhooks.ext')
+
+# ============================================================
+# Source files
+# ============================================================
+project.sources = [
     'extension.cpp',
     'natives.cpp',
     'vglobals.cpp',
 ]
 
-# CDetour sources (from SourceMod public)
-cdetourSources = [
-    '../sourcemod/public/CDetour/detours.cpp',
+# ============================================================
+# Include paths
+# ============================================================
+sm_root = builder.options.sm_root
+mm_root = builder.options.mm_root
+hl2sdk = builder.options.hl2sdk_path
+
+project.includes = [
+    os.path.join(sm_root, 'public'),
+    os.path.join(sm_root, 'public', 'sourcepawn'),
+    os.path.join(sm_root, 'public', 'amtl'),
+    os.path.join(sm_root, 'public', 'safetyhook'),
+    os.path.join(mm_root, 'core'),
+    os.path.join(mm_root, 'core', 'sourcehook'),
+    os.path.join(hl2sdk, 'public'),
+    os.path.join(hl2sdk, 'public', 'game'),
+    os.path.join(hl2sdk, 'public', 'tier1'),
+    os.getcwd(),
 ]
 
-# libudis86 sources (for x86 detours)
-libudis86Sources = [
-    '../sourcemod/public/libudis86/decode.c',
-    '../sourcemod/public/libudis86/itab.c',
-    '../sourcemod/public/libudis86/syn-att.c',
-    '../sourcemod/public/libudis86/syn-intel.c',
-    '../sourcemod/public/libudis86/syn.c',
-    '../sourcemod/public/libudis86/udis86.c',
+# ============================================================
+# Preprocessor defines
+# ============================================================
+project.defines = [
+    'DODHOOKS_BUILD',
+    'META_NO_HL2SDK',
+    'SNVISION',
 ]
 
-# asm.c (for x86 detours)
-asmSource = '../sourcemod/public/asm/asm.c'
+# ============================================================
+# C++ standard
+# ============================================================
+project.cpp_std = 'c++17'
 
-# ---- Simple extensions do not need to modify past this point ----
+# ============================================================
+# Output filename (no extension - OS adds .dll/.so)
+# ============================================================
+project.output_file = 'dodhooks.ext'
 
-builder.SetBuildFolder('package')
-from ambuild2 import Extension
-project = Extension.HL2Project(builder, projectName + '.ext')
+# ============================================================
+# Platform-specific
+# ============================================================
+if builder.platform == 'windows':
+    project.defines.append('WIN32')
+    project.defines.append('_CRT_SECURE_NO_WARNINGS')
+    project.libs = [
+        'user32.lib',
+        'ws2_32.lib',
+        'advapi32.lib',
+    ]
+elif builder.platform == 'linux':
+    project.defines.append('POSIX')
+    project.defines.append('LINUX')
+    project.libs = [
+        'dl',
+        'pthread',
+        'tier1',
+    ]
 
-# Add main sources
-project.sources += sourceFiles
+# ============================================================
+# Debug/Release
+# ============================================================
+if builder.build_type == 'debug':
+    project.defines.append('DEBUG')
+    project.defines.append('_DEBUG')
+else:
+    project.defines.append('NDEBUG')
+    project.optimize = True
 
-# Check if safetyhook is available (SourceMod 1.12+)
-sm_public_path = os.path.join(Extension.sm_root, 'public')
-safetyhook_path = os.path.join(sm_public_path, 'safetyhook', 'AMBuilder')
+# ============================================================
+# Dependencies
+# ============================================================
+project.depends_on('sourcemod')
+project.depends_on('metamod')
 
-use_safetyhook = os.path.exists(safetyhook_path)
+# ============================================================
+# Register project
+# ============================================================
+builder.add_project(project)
 
-for sdk_name in Extension.sdks:
-    sdk = Extension.sdks[sdk_name]
-    
-    binary = Extension.HL2Config(project, projectName + '.ext.' + sdk.ext, sdk)
-    
-    # Add CDetour
-    if use_safetyhook:
-        # SourceMod 1.12+ with safetyhook support
-        binary.sources += [
-            os.path.join(sm_public_path, 'CDetour', 'detours.cpp'),
-        ]
-        binary.compiler.cxxincludes += [
-            os.path.join(sm_public_path, 'safetyhook', 'include'),
-        ]
-        # Link against safetyhook library
-        for task in getattr(Extension, 'libsafetyhook', {}):
-            if task.target.arch == binary.compiler.target.arch:
-                binary.compiler.linkflags += [task.binary]
-    else:
-        # Traditional CDetour with libudis86 (x86 only)
-        binary.sources += cdetourSources
-        
-        libudis_folder = os.path.join(sm_public_path, 'libudis86')
-        if os.path.isdir(libudis_folder):
-            binary.compiler.defines += ['HAVE_STRING_H']
-            binary.sources += libudis86Sources
-        
-        # Add asm.c for x86
-        asm_path = os.path.join(sm_public_path, 'asm', 'asm.c')
-        if os.path.isfile(asm_path):
-            binary.sources += [asm_path]
-
-# Add smsdk_ext.cpp from SourceMod public
-smsdk_ext = os.path.join(sm_public_path, 'smsdk_ext.cpp')
-if os.path.isfile(smsdk_ext):
-    project.sources += [smsdk_ext]
-
-Extension.extensions = builder.Add(project)
+print("✅ AMBuildScript: dodhooks.ext configured")

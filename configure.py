@@ -1,52 +1,117 @@
-# vim: set ts=2 sw=2 tw=99 noet:
+#!/usr/bin/env python3
 """
-DoDHooks - Configure Script
-Updated for SourceMod 1.12 / 1.13
-Supports: Windows (x86, x64), Linux (x86, x64)
+DoDHooks configure.py
+Compatible with SourceMod 1.12 / AMBuild 2.2
 """
 
-import sys
+import sys, os, subprocess, platform
+
+# SM 1.12 configure API
+from ambuild2 import runplugin
+from ambuild2 import util
+
+class configure(runplugin.Configure):
+    def configure(self):
+        # C++17 for SM 1.12
+        self.cxx_cpp = "17"
+
+        # Detect compiler
+        if platform.system() == "Windows":
+            self.compiler = "msvc"
+        else:
+            self.compiler = "gcc"  # or clang
+
+        # Architecture
+        self.target_arch = self.options.targets
+
+        # Build type
+        if self.options.enable_optimize:
+            self.build_type = "release"
+        else:
+            self.build_type = "debug"
+
+        # SM paths
+        self.sm_root = self.options.sm_path
+        self.mm_root = self.options.mms_path
+        self.hl2sdk_root = self.options.hl2sdk_root
+        self.sdk_name = self.options.sdks  # 'dod'
+
+        # Validate paths
+        if not os.path.isdir(self.sm_root):
+            self.fatal_error("SourceMod path not found: %s" % self.sm_root)
+        if not os.path.isdir(self.mm_root):
+            self.fatal_error("Metamod:Source path not found: %s" % self.mm_root)
+
+        sdk_path = os.path.join(self.hl2sdk_root, "hl2sdk-dods")
+        if not os.path.isdir(sdk_path):
+            self.fatal_error("HL2SDK DoD:S not found: %s" % sdk_path)
+
+        self.hl2sdk_path = sdk_path
+
+        # Generate AMBuild build script
+        self.generate_builds()
+
+    def generate_builds(self):
+        # Write AMBuildScript with all build info
+        script = """# -*- coding: utf-8 -*-
+from ambuild2 import Extension
 import os
 
-try:
-    from ambuild2 import run, util
-except:
-    try:
-        import ambuild
-        sys.stderr.write('It looks like you have AMBuild 1 installed, but this project uses AMBuild 2.\n')
-        sys.stderr.write('Upgrade to the latest version of AMBuild to continue.\n')
-    except:
-        sys.stderr.write('AMBuild must be installed to build this project.\n')
-        sys.stderr.write('http://www.alliedmods.net/ambuild\n')
-    sys.exit(1)
+builder = getbuilder()
 
-# Require AMBuild 2.2+
-ambuild_version = getattr(run, 'CURRENT_API', '2.1')
-if ambuild_version.startswith('2.1'):
-    sys.stderr.write("AMBuild 2.2 or higher is required; please update\n")
-    sys.exit(1)
+# Project definition
+project = Extension.HL2Project(builder, 'dodhooks.ext')
 
-parser = run.BuildParser(sourcePath=sys.path[0], api='2.2')
+# Sources
+project.sources = [
+    'extension.cpp',
+    'natives.cpp',
+    'vglobals.cpp',
+]
 
-# ---- Build options ----
-parser.options.add_argument('--hl2sdk-root', type=str, dest='hl2sdk_root', default=None,
-    help='Root search folder for HL2SDKs')
-parser.options.add_argument('--mms-path', type=str, dest='mms_path', default=None,
-    help='Path to Metamod:Source')
-parser.options.add_argument('--sm-path', type=str, dest='sm_path', default=None,
-    help='Path to SourceMod')
-parser.options.add_argument('--enable-debug', action='store_const', const='1', dest='debug',
-    help='Enable debugging symbols')
-parser.options.add_argument('--enable-optimize', action='store_const', const='1', dest='opt',
-    help='Enable optimization')
-parser.options.add_argument('-s', '--sdks', default='all', dest='sdks',
-    help='Build against specified SDKs; valid args are "all", "present", or '
-         'comma-delimited list of engine names (default: %(default)s)')
-parser.options.add_argument('--targets', type=str, dest='targets', default=None,
-    help='Override the target architecture (use commas to separate multiple targets, '
-         'e.g. "x86,x86_64"). Default: both.')
-parser.options.add_argument('--disable-auto-versioning', action='store_true',
-    dest='disable_auto_versioning', default=False,
-    help='Disable the auto versioning script')
+# Include paths
+project.includes = [
+    builder.options.sm_root + '/public',
+    builder.options.sm_root + '/public/sourcepawn',
+    builder.options.sm_root + '/public/amtl',
+    builder.options.sm_root + '/public/safetyhook',
+    builder.options.mm_root + '/core',
+    builder.options.mm_root + '/core/sourcehook',
+    builder.options.hl2sdk_path + '/public',
+    builder.options.hl2sdk_path + '/public/game',
+    builder.options.hl2sdk_path + '/public/tier1',
+    os.getcwd(),
+]
 
-parser.Configure()
+# Defines
+project.defines = [
+    'DODHOOKS_BUILD',
+    'META_NO_HL2SDK',
+]
+
+# C++ standard
+project.cpp_std = 'c++17'
+
+# Output
+project.output_file = 'dodhooks.ext'
+
+# Dependencies
+project.depends_on('sourcemod')
+project.depends_on('metamod')
+
+builder.add_project(project)
+"""
+        # Write the script
+        ambuild_path = os.path.join(os.getcwd(), "AMBuildScript")
+        with open(ambuild_path, 'w') as f:
+            f.write(script)
+
+        print("✅ DoDHooks configure complete")
+        print(f"   SM root: {self.sm_root}")
+        print(f"   MM root: {self.mm_root}")
+        print(f"   HL2SDK:  {self.hl2sdk_path}")
+        print(f"   Arch:    {self.target_arch}")
+        print(f"   Build:   {self.build_type}")
+
+if __name__ == '__main__':
+    runplugin.run(configure)
