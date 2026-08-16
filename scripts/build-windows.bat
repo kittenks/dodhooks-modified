@@ -1,141 +1,85 @@
 @echo off
-REM ============================================================
-REM DoDHooks Windows Build Script
-REM Usage: scripts\build-windows.bat [x86^|x86_64^|all]
-REM Requirements:
-REM   - Visual Studio 2019 or 2022 with C++ tools
-REM   - Python 3.11
-REM   - AMBuild 2.2.0 (pip install "AMBuild==2.2.0")
-REM   - Git
-REM
-REM Environment variables (set these before running):
-REM   SM_ROOT     - Path to SourceMod source
-REM   MM_ROOT     - Path to Metamod:Source source
-REM   HL2SDK_ROOT - Parent directory of hl2sdk-dods
-REM ============================================================
+REM DoDHooks Windows 本地编译脚本
+REM 用法: build-windows.bat [x86|x86_64]
 
 setlocal EnableDelayedExpansion
 
-set "SCRIPT_DIR=%~dp0"
-set "PROJECT_ROOT=%SCRIPT_DIR%.."
-set "TARGET=%~1"
-if "%TARGET%"=="" set "TARGET=x86_64"
+set ARCH=%1
+if "%ARCH%"=="" set ARCH=x86_64
 
-REM ============================================================
-REM Default paths (override via environment variables)
-REM ============================================================
-if "%SM_ROOT%"==""     set "SM_ROOT=%USERPROFILE%\sourcemod"
-if "%MM_ROOT%"==""     set "MM_ROOT=%USERPROFILE%\metamod-source"
-if "%HL2SDK_ROOT%"=="" set "HL2SDK_ROOT=%USERPROFILE%"
+echo ==========================================
+echo   DoDHooks Windows Build
+echo   Arch: %ARCH%
+echo ==========================================
 
-echo ============================================================
-echo  DoDHooks Windows Build Script
-echo  Project root: %PROJECT_ROOT%
-echo  Target: %TARGET%
-echo ============================================================
-echo.
+set ROOT_DIR=%~dp0..
+set WORKSPACE=%ROOT_DIR%\..
 
-REM ============================================================
-REM Check dependencies
-REM ============================================================
-echo [*] Checking dependencies...
-
-where python >nul 2>&1
+REM 安装 AMBuild
+echo [1/5] Installing AMBuild 2.2.0...
+pip install "AMBuild==2.2.0"
 if errorlevel 1 (
-    echo [X] python not found in PATH
-    echo     Install from https://www.python.org/downloads/
+    echo ERROR: Failed to install AMBuild
     exit /b 1
 )
-echo [✓] python found
 
-python -c "import ambuild2" 2>nul
-if errorlevel 1 (
-    echo [!] AMBuild not found. Installing...
-    pip install "AMBuild==2.2.0"
-    if errorlevel 1 (
-        echo [X] Failed to install AMBuild
-        exit /b 1
-    )
+REM 检查/克隆依赖
+echo [2/5] Checking dependencies...
+
+if not exist "%WORKSPACE%\sourcemod" (
+    echo   Cloning SourceMod...
+    git clone --depth 1 -b 1.12-dev https://github.com/alliedmodders/sourcemod.git "%WORKSPACE%\sourcemod"
 )
-echo [✓] AMBuild found
 
-if not exist "%SM_ROOT%" (
-    echo [X] SourceMod not found at: %SM_ROOT%
-    echo     Set SM_ROOT environment variable
-    echo     Or clone: git clone -b 1.12-dev https://github.com/alliedmodders/sourcemod
-    exit /b 1
+if not exist "%WORKSPACE%\mmsource" (
+    echo   Cloning Metamod:Source...
+    git clone --depth 1 -b 1.11-dev https://github.com/alliedmodders/metamod-source.git "%WORKSPACE%\mmsource"
 )
-echo [✓] SourceMod found: %SM_ROOT%
 
-if not exist "%MM_ROOT%" (
-    echo [X] Metamod:Source not found at: %MM_ROOT%
-    echo     Set MM_ROOT environment variable
-    echo     Or clone: git clone -b 1.12-dev https://github.com/alliedmodders/metamod-source
-    exit /b 1
+if not exist "%WORKSPACE%\hl2sdk-dods" (
+    echo   Cloning hl2sdk (dods)...
+    git clone --depth 1 -b dods https://github.com/alliedmodders/hl2sdk.git "%WORKSPACE%\hl2sdk-dods"
 )
-echo [✓] Metamod:Source found: %MM_ROOT%
 
-if not exist "%HL2SDK_ROOT%\hl2sdk-dods" (
-    echo [X] HL2SDK DoD:S not found at: %HL2SDK_ROOT%\hl2sdk-dods
-    echo     Clone with: git clone -b dods https://github.com/alliedmodders/hl2sdk hl2sdk-dods
-    exit /b 1
+REM 设置 MSVC 环境
+echo [3/5] Setting up MSVC...
+if "%ARCH%"=="x86" (
+    call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x86
+) else (
+    call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64
 )
-echo [✓] HL2SDK DoD:S found: %HL2SDK_ROOT%\hl2sdk-dods
-echo.
-
-REM ============================================================
-REM Build function
-REM ============================================================
-call :build_target %TARGET%
-if errorlevel 1 exit /b 1
-
-echo.
-echo ============================================================
-echo  Build complete!
-echo ============================================================
-goto :eof
-
-:build_target
-set "arch=%~1"
-echo [*] Building for %arch%...
-
-cd /d "%PROJECT_ROOT%"
-
-REM Clean
-if exist "build_%arch%" rmdir /s /q "build_%arch%"
-mkdir "build_%arch%"
-cd "build_%arch%"
 
 REM Configure
-echo [*] Configuring (%arch%)...
+echo [4/5] Configuring...
+cd /d "%ROOT_DIR%"
+if exist build rmdir /s /q build
+mkdir build
+cd build
+
 python ..\configure.py ^
-    --targets=%arch% ^
+    --targets=%ARCH% ^
     --enable-optimize ^
-    --sm-path="%SM_ROOT%" ^
-    --mms-path="%MM_ROOT%" ^
-    --hl2sdk-root="%HL2SDK_ROOT%" ^
+    --sm-path=%WORKSPACE%\sourcemod ^
+    --mms-path=%WORKSPACE%\mmsource ^
+    --hl2sdk-root=%WORKSPACE% ^
     --sdks=dod
 
 if errorlevel 1 (
-    echo [X] Configure failed for %arch%
+    echo ERROR: Configure failed
     exit /b 1
 )
-echo [✓] Configure successful (%arch%)
 
 REM Build
-echo [*] Compiling (%arch%)...
+echo [5/5] Building...
 ambuild
 if errorlevel 1 (
-    echo [X] Build failed for %arch%
+    echo ERROR: Build failed
     exit /b 1
 )
-echo [✓] Build successful (%arch%)
 
-REM Show output
-if exist "package\dodhooks.ext.dll" (
-    echo [✓] Artifact: package\dodhooks.ext.dll
-    dir "package\dodhooks.ext.dll"
-)
-
-cd /d "%PROJECT_ROOT%"
-exit /b 0
+echo.
+echo ==========================================
+echo   BUILD SUCCESS
+echo   Output: %ROOT_DIR%\build\package\
+echo ==========================================
+dir "%ROOT_DIR%\build\package\" 2>nul || echo (package dir not found)
