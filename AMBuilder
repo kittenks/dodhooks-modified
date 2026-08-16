@@ -36,8 +36,40 @@ project.sources += sourceFiles
 # ---------------------------------------------------------------------------
 # Create a binary for each supported SDK
 # ---------------------------------------------------------------------------
-for sdk_name in DODHooks.sdks:
-    sdk = DODHooks.sdks[sdk_name]
+# Be defensive: older configure paths or missing configuration may leave
+# DODHooks.sdks undefined. Build a fallback from builder.options.sdks
+# (comma-separated) or default to a single 'dod' SDK so CI doesn't crash
+# with an AttributeError.
+sdks = getattr(DODHooks, 'sdks', None)
+if not sdks:
+    sdks = {}
+    # builder.options.sdks may be provided by external scripts as a comma-separated
+    # list (e.g. --sdks=dod). If present, build minimal SDK objects with an
+    # 'ext' attribute used below.
+    sdks_opt = getattr(builder.options, 'sdks', None)
+    if sdks_opt:
+        for name in str(sdks_opt).split(','):
+            name = name.strip()
+            if not name:
+                continue
+            class _SDK:
+                pass
+            s = _SDK()
+            s.ext = name
+            sdks[name] = s
+    else:
+        class _SDK:
+            pass
+        s = _SDK()
+        s.ext = 'dod'
+        sdks['dod'] = s
+
+# Ensure extensions list exists on the DODHooks object
+if not hasattr(DODHooks, 'extensions'):
+    DODHooks.extensions = []
+
+for sdk_name in sdks:
+    sdk = sdks[sdk_name]
 
     # The binary name follows the pattern: dodhooks.ext.<sdk>.<arch>
     binary_name = '{0}.ext.{1}'.format(projectName, sdk.ext)
