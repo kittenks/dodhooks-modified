@@ -1,0 +1,123 @@
+steps:
+  - name: Checkout source
+    uses: actions/checkout@v4
+    with:
+      submodules: recursive
+
+  # 核心修复：显式设置 Python 并创建虚拟环境，避免污染全局环境
+  - name: Set up Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: "3.11" # 推荐锁定 3.11，对 AMBuild 兼容性最好
+
+  - name: Create venv and install AMBuild
+    run: |
+      python -m venv .ambuild-venv
+      if [ "$RUNNER_OS" = "Windows" ]; then
+        .\.ambuild-venv\Scripts\activate
+      else
+        source .ambuild-venv/bin/activate
+      fi
+      pip install wheel
+      pip install ambuild
+    shell: bash
+
+  - name: Activate venv and check AMBuild
+    run: |
+      if [ "$RUNNER_OS" = "Windows" ]; then
+        .\.ambuild-venv\Scripts\activate
+      else
+        source .ambuild-venv/bin/activate
+      fi
+      ambuild --version
+    shell: bash
+
+  - name: Checkout hl2sdk-dods
+    uses: actions/checkout@v4
+    with:
+      repository: alliedmodders/hl2sdk
+      ref: dods
+      path: hl2sdk-dods
+
+  - name: Install Linux x86 dependencies
+    if: runner.os == 'Linux' && matrix.arch == 'x86'
+    run: |
+      sudo dpkg --add-architecture i386
+      sudo apt-get update
+      sudo apt-get install -y --no-install-recommends \
+        gcc-multilib g++-multilib lib32stdc++6 \
+        zlib1g-dev zlib1g-dev:i386 libc6-dev-i386 linux-libc-dev:i386
+
+  - name: Setup MSVC
+    if: runner.os == 'Windows'
+    uses: ilammy/msvc-dev-cmd@v1
+    with:
+      arch: ${{ matrix.msvc_arch }}
+
+  # Linux 构建步骤
+  - name: Configure (Linux)
+    if: runner.os == 'Linux'
+    working-directory: src
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+      # 激活虚拟环境以便 configure.py 能找到 ambuild
+      VIRTUAL_ENV: ${{ github.workspace }}/.ambuild-venv
+      PATH: ${{ github.workspace }}/.ambuild-venv/bin:${{ env.PATH }}
+    run: |
+      rm -rf build
+      mkdir build && cd build
+      python3 ../configure.py \
+        --targets=${{ matrix.arch }} \
+        --enable-optimize \
+        --sm-path=$GITHUB_WORKSPACE/sourcemod \
+        --mms-path=$GITHUB_WORKSPACE/mmsource \
+        --hl2sdk-root=$GITHUB_WORKSPACE \
+        --sdks=dod
+    # 增加错误检测，configure 失败直接终止
+    continue-on-error: false
+
+  - name: Build (Linux)
+    if: runner.os == 'Linux'
+    working-directory: src/build
+    env:
+      VIRTUAL_ENV: ${{ github.workspace }}/.ambuild-venv
+      PATH: ${{ github.workspace }}/.ambuild-venv/bin:${{ env.PATH }}
+    run: ambuild
+
+  # Windows 构建步骤
+  - name: Configure (Windows)
+    if: runner.os == 'Windows'
+    shell: cmd
+    working-directory: src
+    env:
+      VIRTUAL_ENV: ${{ github.workspace }}\.ambuild-venv
+      PATH: ${{ github.workspace }}\.ambuild-venv\Scripts;${{ env.PATH }}
+    run: |
+      if exist build rmdir /s /q build
+      mkdir build && cd build
+      python ../configure.py ^
+        --targets=${{ matrix.arch }} ^
+        --enable-optimize ^
+        --sm-path=%GITHUB_WORKSPACE%\sourcemod ^
+        --mms-path=%GITHUB_WORKSPACE%\mmsource ^
+        --hl2sdk-root=%GITHUB_WORKSPACE% ^
+        --sdks=dod
+    continue-on-error: false
+
+  - name: Build (Windows)
+    if: runner.os == 'Windows'
+    shell: cmd
+    working-directory: src/build
+    env:
+      VIRTUAL_ENV: ${{ github.workspace }}\.ambuild-venv
+      PATH: ${{ github.workspace }}\.ambuild-venv\Scripts;${{ env.PATH }}
+    run: ambuild
+
+  - name: Upload artifact
+    uses: actions/upload-artifact@v4
+    with:
+      name: dodhooks-${{ runner.os }}-${{ matrix.arch }}
+      path: src/build/package/*
+      if-no-files-found: error
+      
