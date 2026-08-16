@@ -1,5 +1,0 @@
-# DoDHooks build dependencies
-AMBuild==2.2.0
-
-# Python version requirement
-# Python >=3.9,<3.14
