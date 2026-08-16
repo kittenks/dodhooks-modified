@@ -3,6 +3,7 @@ name: Build
 "on":
   push:
     branches: [main, master]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -14,7 +15,7 @@ env:
   MMSOURCE_BRANCH: "1.12-dev"
   HL2SDK_DODS_BRANCH: "dods"
   PYTHON_VERSION: "3.11"
-  AMBUILD_REF: "v22"
+  AMBUILD_TAG: "2.2.0"
 
 jobs:
   build:
@@ -73,12 +74,12 @@ jobs:
           ref: ${{ env.HL2SDK_DODS_BRANCH }}
           path: hl2sdk-dods
 
-      - name: Checkout AMBuild v22 (2.2 API)
-        uses: actions/checkout@v4
-        with:
-          repository: alliedmodders/ambuild
-          ref: ${{ env.AMBUILD_REF }}
-          path: ambuild
+      # 不使用actions/checkout，脚本git clone完整仓库，检出tag 2.2.0
+      - name: Clone AMBuild tag 2.2.0
+        run: |
+          git clone --depth 0 https://github.com/alliedmodders/ambuild.git ambuild
+          cd ambuild
+          git checkout tags/${{ env.AMBUILD_TAG }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -168,3 +169,20 @@ jobs:
           name: dodhooks-${{ runner.os }}-${{ matrix.arch }}
           path: dodhooks/build/package/*
           if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Package
+        run: |
+          cd artifacts
+          for d in dodhooks-*; do zip -r "../$d.zip" "$d"; done
+          cd ..
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dodhooks-*.zip
