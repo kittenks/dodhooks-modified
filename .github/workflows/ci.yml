@@ -15,7 +15,7 @@ env:
   MMSOURCE_BRANCH: "1.12-dev"
   HL2SDK_DODS_BRANCH: "dods"
   PYTHON_VERSION: "3.11"
-  AMBUILD_FIX_COMMIT: "6fdb59c06f43a4e6b1bcb401f7686a8601a1fb4a"
+  AMBUILD_TAG: "2.2.1"
 
 jobs:
   build:
@@ -69,12 +69,12 @@ jobs:
           path: hl2sdk-dods
           fetch-depth: 0
 
-      # ===== 参考SteamWorks方式获取AMBuild，固定commit hash，fetch‑depth:0获取完整历史 =====
-      - name: Checkout AMBuild fixed commit (2.2‑API)
+      # 官方真实tag:2.2.1，保留ambuild2.Extension，fetch‑depth:0获取全部tags
+      - name: Checkout AMBuild tag 2.2.1
         uses: actions/checkout@v4
         with:
           repository: alliedmodders/ambuild
-          ref: ${{ env.AMBUILD_FIX_COMMIT }}
+          ref: ${{ env.AMBUILD_TAG }}
           path: ambuild
           fetch-depth: 0
 
@@ -83,15 +83,16 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      # 现代ambuild安装，官方推荐 pip install ./ambuild，替代setup.py install
       - name: Install AMBuild
         run: |
           python -m pip install --upgrade pip setuptools
           python -m pip install ./ambuild
+        shell: pwsh
 
       - name: Verify AMBuild2 Extension import
         run: |
-          python -c "from ambuild2 import Extension; print('✅ OK: Extension class loaded, AMBuild 2.2 API')"
+          python -c "from ambuild2 import Extension; print('✅ OK: Extension class loaded, AMBuild 2.2.1 API')"
+        shell: pwsh
 
       - name: Install Linux multilib dependencies
         if: runner.os == 'Linux' && matrix.arch == 'x86'
@@ -112,16 +113,15 @@ jobs:
         with:
           arch: ${{ matrix.msvc_arch }}
 
-      # Configure，工作目录=dodhooks项目根，和SteamWorks保持一致
       - name: Configure build
         working-directory: dodhooks
         run: |
-          python configure.py \
-            --targets=${{ matrix.arch }} \
-            --enable-optimize \
-            --sm-path=${{ github.workspace }}/sourcemod \
-            --mms-path=${{ github.workspace }}/mmsource \
-            --hl2sdk-root=${{ github.workspace }} \
+          python configure.py `
+            --targets=${{ matrix.arch }} `
+            --enable-optimize `
+            --sm-path=${{ github.workspace }}/sourcemod `
+            --mms-path=${{ github.workspace }}/mmsource `
+            --hl2sdk-root=${{ github.workspace }} `
             --sdks=dod
         shell: pwsh
 
