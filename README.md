@@ -255,5 +255,6 @@ GPL v2 - See [LICENSE](LICENSE) for details.
 - **Andersso** - Original author
 - **ChesterSmitty** - Previous maintainer
 - **Apfelwurm** - CI improvements
-- **DNA-styx** - Upstream maintainer (1.12/1.13 updates)
+- **DNA-styx** - Gamedata file
+- **Kittenks** - Upstream maintainer (1.12/1.13 updates)
 - **AlliedModders** - SourceMod, Metamod:Source, AMBuild
