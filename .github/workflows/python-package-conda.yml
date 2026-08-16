@@ -1,37 +1,30 @@
-steps:
+      steps:
   - name: Checkout source
     uses: actions/checkout@v4
     with:
       submodules: recursive
 
-  # 核心修复：显式设置 Python 并创建虚拟环境，避免污染全局环境
+  # ─── 关键修复：安装 AMBuild 到 Python 环境 ───
   - name: Set up Python
     uses: actions/setup-python@v5
     with:
-      python-version: "3.11" # 推荐锁定 3.11，对 AMBuild 兼容性最好
+      python-version: "3.11" # 使用稳定的 3.11 版本
 
-  - name: Create venv and install AMBuild
+  - name: Install AMBuild (Linux/macOS)
+    if: runner.os != 'Windows'
     run: |
-      python -m venv .ambuild-venv
-      if [ "$RUNNER_OS" = "Windows" ]; then
-        .\.ambuild-venv\Scripts\activate
-      else
-        source .ambuild-venv/bin/activate
-      fi
-      pip install wheel
-      pip install ambuild
-    shell: bash
+      python3 -m venv $AMBUILD_VENV
+      source $AMBUILD_VENV/bin/activate
+      pip install ./ambuild # 安装本地 ambuild 目录为包
 
-  - name: Activate venv and check AMBuild
+  - name: Install AMBuild (Windows)
+    if: runner.os == 'Windows'
     run: |
-      if [ "$RUNNER_OS" = "Windows" ]; then
-        .\.ambuild-venv\Scripts\activate
-      else
-        source .ambuild-venv/bin/activate
-      fi
-      ambuild --version
-    shell: bash
+      python -m venv $env:AMBUILD_VENV
+      . $env:AMBUILD_VENV/Scripts/activate
+      pip install ./ambuild # 安装本地 ambuild 目录为包
 
+  # ─── 准备 HL2SDK ───
   - name: Checkout hl2sdk-dods
     uses: actions/checkout@v4
     with:
@@ -39,14 +32,10 @@ steps:
       ref: dods
       path: hl2sdk-dods
 
-  - name: Install Linux x86 dependencies
-    if: runner.os == 'Linux' && matrix.arch == 'x86'
-    run: |
-      sudo dpkg --add-architecture i386
-      sudo apt-get update
-      sudo apt-get install -y --no-install-recommends \
-        gcc-multilib g++-multilib lib32stdc++6 \
-        zlib1g-dev zlib1g-dev:i386 libc6-dev-i386 linux-libc-dev:i386
+  # ─── 安装系统级编译依赖 ───
+  - name: Install Linux x86_64 dependencies
+    if: runner.os == 'Linux' && matrix.arch == 'x86_64'
+    run: sudo apt-get update && sudo apt-get install -y clang libc6-dev
 
   - name: Setup MSVC
     if: runner.os == 'Windows'
@@ -54,16 +43,13 @@ steps:
     with:
       arch: ${{ matrix.msvc_arch }}
 
-  # Linux 构建步骤
+  # ─── Linux 构建流程 ───
   - name: Configure (Linux)
     if: runner.os == 'Linux'
     working-directory: src
     env:
-      CC: ${{ matrix.cc }}
-      CXX: ${{ matrix.cxx }}
-      # 激活虚拟环境以便 configure.py 能找到 ambuild
-      VIRTUAL_ENV: ${{ github.workspace }}/.ambuild-venv
-      PATH: ${{ github.workspace }}/.ambuild-venv/bin:${{ env.PATH }}
+      VIRTUAL_ENV: ${{ env.AMBUILD_VENV }}
+      PATH: ${{ env.AMBUILD_VENV }}/bin:$PATH
     run: |
       rm -rf build
       mkdir build && cd build
@@ -74,25 +60,24 @@ steps:
         --mms-path=$GITHUB_WORKSPACE/mmsource \
         --hl2sdk-root=$GITHUB_WORKSPACE \
         --sdks=dod
-    # 增加错误检测，configure 失败直接终止
     continue-on-error: false
 
   - name: Build (Linux)
     if: runner.os == 'Linux'
     working-directory: src/build
     env:
-      VIRTUAL_ENV: ${{ github.workspace }}/.ambuild-venv
-      PATH: ${{ github.workspace }}/.ambuild-venv/bin:${{ env.PATH }}
+      VIRTUAL_ENV: ${{ env.AMBUILD_VENV }}
+      PATH: ${{ env.AMBUILD_VENV }}/bin:$PATH
     run: ambuild
 
-  # Windows 构建步骤
+  # ─── Windows 构建流程 ───
   - name: Configure (Windows)
     if: runner.os == 'Windows'
     shell: cmd
     working-directory: src
     env:
-      VIRTUAL_ENV: ${{ github.workspace }}\.ambuild-venv
-      PATH: ${{ github.workspace }}\.ambuild-venv\Scripts;${{ env.PATH }}
+      VIRTUAL_ENV: ${{ env.AMBUILD_VENV }}
+      PATH: ${{ env.AMBUILD_VENV }}\Scripts;%PATH%
     run: |
       if exist build rmdir /s /q build
       mkdir build && cd build
@@ -110,14 +95,14 @@ steps:
     shell: cmd
     working-directory: src/build
     env:
-      VIRTUAL_ENV: ${{ github.workspace }}\.ambuild-venv
-      PATH: ${{ github.workspace }}\.ambuild-venv\Scripts;${{ env.PATH }}
+      VIRTUAL_ENV: ${{ env.AMBUILD_VENV }}
+      PATH: ${{ env.AMBUILD_VENV }}\Scripts;%PATH%
     run: ambuild
 
+  # ─── 上传产物 ───
   - name: Upload artifact
     uses: actions/upload-artifact@v4
     with:
       name: dodhooks-${{ runner.os }}-${{ matrix.arch }}
       path: src/build/package/*
       if-no-files-found: error
-      
