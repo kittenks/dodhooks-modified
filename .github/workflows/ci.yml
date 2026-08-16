@@ -15,7 +15,8 @@ env:
   MMSOURCE_BRANCH: "1.12-dev"
   HL2SDK_DODS_BRANCH: "dods"
   PYTHON_VERSION: "3.11"
-  AMBUILD_TAG: "2.2.1"
+  # 该commit尚未3.x重构，保留ambuild2.Extension类
+  AMBUILD_REF: "73353142657c451238726410244070174317425c"
 
 jobs:
   build:
@@ -69,29 +70,21 @@ jobs:
           path: hl2sdk-dods
           fetch-depth: 0
 
-      # 官方真实tag:2.2.1，保留ambuild2.Extension，fetch‑depth:0获取全部tags
-      - name: Checkout AMBuild tag 2.2.1
-        uses: actions/checkout@v4
-        with:
-          repository: alliedmodders/ambuild
-          ref: ${{ env.AMBUILD_TAG }}
-          path: ambuild
-          fetch-depth: 0
-
       - name: Set‑up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install AMBuild
+      # ✅关键：pip直接从git安装指定commit，不需要本地ambuild文件夹，绕开所有checkout/git clone坑
+      - name: Install AMBuild from git fixed commit
         run: |
           python -m pip install --upgrade pip setuptools
-          python -m pip install ./ambuild
+          python -m pip install "git+https://github.com/alliedmodders/ambuild.git@${{ env.AMBUILD_REF }}"
         shell: pwsh
 
       - name: Verify AMBuild2 Extension import
         run: |
-          python -c "from ambuild2 import Extension; print('✅ OK: Extension class loaded, AMBuild 2.2.1 API')"
+          python -c "from ambuild2 import Extension; print('✅ OK: Extension class loaded, AMBuild 2.2 API')"
         shell: pwsh
 
       - name: Install Linux multilib dependencies
