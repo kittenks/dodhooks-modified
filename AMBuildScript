@@ -1,0 +1,90 @@
+# vim: set sts=2 ts=8 sw=2 tw=99 et ft=python:
+"""
+DoDHooks - AMBuild Script
+Updated for SourceMod 1.12 / 1.13
+Supports: Windows (x86, x64), Linux (x86, x64)
+"""
+
+import os, sys, platform
+
+projectName = 'dodhooks'
+
+# ---- Source files ----
+# smsdk_ext.cpp is automatically added by the build system
+sourceFiles = [
+    'extension.cpp',
+    'natives.cpp',
+    'vglobals.cpp',
+]
+
+# CDetour sources (from SourceMod public)
+cdetourSources = [
+    '../sourcemod/public/CDetour/detours.cpp',
+]
+
+# libudis86 sources (for x86 detours)
+libudis86Sources = [
+    '../sourcemod/public/libudis86/decode.c',
+    '../sourcemod/public/libudis86/itab.c',
+    '../sourcemod/public/libudis86/syn-att.c',
+    '../sourcemod/public/libudis86/syn-intel.c',
+    '../sourcemod/public/libudis86/syn.c',
+    '../sourcemod/public/libudis86/udis86.c',
+]
+
+# asm.c (for x86 detours)
+asmSource = '../sourcemod/public/asm/asm.c'
+
+# ---- Simple extensions do not need to modify past this point ----
+
+builder.SetBuildFolder('package')
+
+project = Extension.HL2Project(builder, projectName + '.ext')
+
+# Add main sources
+project.sources += sourceFiles
+
+# Check if safetyhook is available (SourceMod 1.12+)
+sm_public_path = os.path.join(Extension.sm_root, 'public')
+safetyhook_path = os.path.join(sm_public_path, 'safetyhook', 'AMBuilder')
+
+use_safetyhook = os.path.exists(safetyhook_path)
+
+for sdk_name in Extension.sdks:
+    sdk = Extension.sdks[sdk_name]
+    
+    binary = Extension.HL2Config(project, projectName + '.ext.' + sdk.ext, sdk)
+    
+    # Add CDetour
+    if use_safetyhook:
+        # SourceMod 1.12+ with safetyhook support
+        binary.sources += [
+            os.path.join(sm_public_path, 'CDetour', 'detours.cpp'),
+        ]
+        binary.compiler.cxxincludes += [
+            os.path.join(sm_public_path, 'safetyhook', 'include'),
+        ]
+        # Link against safetyhook library
+        for task in getattr(Extension, 'libsafetyhook', {}):
+            if task.target.arch == binary.compiler.target.arch:
+                binary.compiler.linkflags += [task.binary]
+    else:
+        # Traditional CDetour with libudis86 (x86 only)
+        binary.sources += cdetourSources
+        
+        libudis_folder = os.path.join(sm_public_path, 'libudis86')
+        if os.path.isdir(libudis_folder):
+            binary.compiler.defines += ['HAVE_STRING_H']
+            binary.sources += libudis86Sources
+        
+        # Add asm.c for x86
+        asm_path = os.path.join(sm_public_path, 'asm', 'asm.c')
+        if os.path.isfile(asm_path):
+            binary.sources += [asm_path]
+
+# Add smsdk_ext.cpp from SourceMod public
+smsdk_ext = os.path.join(sm_public_path, 'smsdk_ext.cpp')
+if os.path.isfile(smsdk_ext):
+    project.sources += [smsdk_ext]
+
+Extension.extensions = builder.Add(project)

@@ -1,0 +1,68 @@
+# vim: set sts=2 ts=8 sw=2 tw=99 et ft=python:
+"""
+DoDHooks - AMBuilder
+Updated for SourceMod 1.12 / 1.13
+"""
+
+import os
+
+# This is where the files will be output to
+builder.SetBuildFolder('package')
+
+# Folder structure for the packaged output
+folder_list = [
+    'addons/sourcemod/extensions',
+    'addons/sourcemod/scripting/include',
+    'addons/sourcemod/gamedata',
+    'addons/sourcemod/configs',
+]
+
+# Create the distribution folder hierarchy
+folder_map = {}
+for folder in folder_list:
+    norm_folder = os.path.normpath(folder)
+    folder_map[folder] = builder.AddFolder(norm_folder)
+
+# ---- Include files ----
+def CopyIncludeFiles():
+    """Copy SourcePawn include files"""
+    include_dir = os.path.join(builder.sourcePath, 'sourcemod', 'scripting', 'include')
+    if os.path.isdir(include_dir):
+        for f in os.listdir(include_dir):
+            if f.endswith('.inc'):
+                src = os.path.join(include_dir, f)
+                builder.AddCopy(src, folder_map['addons/sourcemod/scripting/include'])
+
+# ---- Gamedata files ----
+def CopyGamedataFiles():
+    """Copy gamedata files"""
+    gamedata_dir = os.path.join(builder.sourcePath, 'sourcemod', 'gamedata')
+    if os.path.isdir(gamedata_dir):
+        for f in os.listdir(gamedata_dir):
+            if f.endswith('.txt'):
+                src = os.path.join(gamedata_dir, f)
+                builder.AddCopy(src, folder_map['addons/sourcemod/gamedata'])
+
+# ---- Config files ----
+def CopyConfigFiles():
+    """Copy config files"""
+    configs_dir = os.path.join(builder.sourcePath, 'sourcemod', 'configs')
+    if os.path.isdir(configs_dir):
+        for f in os.listdir(configs_dir):
+            src = os.path.join(configs_dir, f)
+            builder.AddCopy(src, folder_map['addons/sourcemod/configs'])
+
+# Execute copy operations
+CopyIncludeFiles()
+CopyGamedataFiles()
+CopyConfigFiles()
+
+# Copy extension binaries
+for cxx_task in Extension.extensions:
+    builder.AddCopy(cxx_task.binary, folder_map['addons/sourcemod/extensions'])
+
+# Create autoload file for the extension
+# This ensures the extension loads automatically with the server
+autoload_content = "# Autoload file for DoDHooks extension\n"
+autoload_path = os.path.join(builder.sourcePath, 'addons', 'sourcemod', 'extensions', 'dodhooks.autoload')
+# Note: The autoload file is created at install time, not build time

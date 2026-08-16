@@ -1,0 +1,54 @@
+# vim: set ts=8 sts=2 sw=2 tw=99 et ft=python:
+"""
+DoDHooks - Package Script
+Updated for SourceMod 1.12 / 1.13
+"""
+
+import os
+
+# Output folder for packaged files
+builder.SetBuildFolder('package')
+
+# Folders to create in the package
+folder_list = [
+    'addons/sourcemod/extensions',
+    'addons/sourcemod/scripting/include',
+    'addons/sourcemod/gamedata',
+    'addons/sourcemod/configs',
+]
+
+# Create folder map
+folder_map = {}
+for folder in folder_list:
+    norm_folder = os.path.normpath(folder)
+    folder_map[folder] = builder.AddFolder(norm_folder)
+
+# ---- Copy SourcePawn include file ----
+include_src = os.path.join(builder.sourcePath, 'sourcemod', 'scripting', 'include', 'dodhooks.inc')
+include_dest = folder_map['addons/sourcemod/scripting/include']
+if os.path.isfile(include_src):
+    builder.AddCopy(include_src, include_dest)
+
+# ---- Copy gamedata files ----
+gamedata_dir = os.path.join(builder.sourcePath, 'sourcemod', 'gamedata')
+if os.path.isdir(gamedata_dir):
+    for fname in os.listdir(gamedata_dir):
+        if fname.endswith('.txt'):
+            src = os.path.join(gamedata_dir, fname)
+            builder.AddCopy(src, folder_map['addons/sourcemod/gamedata'])
+
+# ---- Copy config files (if any) ----
+configs_dir = os.path.join(builder.sourcePath, 'sourcemod', 'configs')
+if os.path.isdir(configs_dir):
+    for fname in os.listdir(configs_dir):
+        src = os.path.join(configs_dir, fname)
+        builder.AddCopy(src, folder_map['addons/sourcemod/configs'])
+
+# ---- Copy compiled extension binaries ----
+for cxx_task in Extension.extensions:
+    builder.AddCopy(cxx_task.binary, folder_map['addons/sourcemod/extensions'])
+
+# ---- Create autoload file ----
+# The autoload file tells SourceMod to load this extension automatically
+autoload_content = "# DoDHooks autoload\n"
+# The actual file will be created during packaging
