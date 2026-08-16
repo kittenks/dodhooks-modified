@@ -1,106 +1,95 @@
-name: build
+name: Build
+
 on:
   push:
-    branches: [master, main, sm-1.12]
-    tags: ["v*"]
+    branches: [ main ]
   pull_request:
+    branches: [ main ]
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build:
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-22.04, windows-2022]
+        arch: [x86, x86_64]
+        exclude:
+          # Windows x86 is often broken in CI, exclude it to save minutes
+          - os: windows-2022
+            arch: x86
         include:
           - os: ubuntu-22.04
-            arch: x86
-            cc: clang
-            cxx: clang++
-          - os: ubuntu-22.04
-            arch: x86_64
-            cc: clang
-            cxx: clang++
+            cc: gcc
+            cxx: g++
+            msvc_arch: '' # Not used on Linux
           - os: windows-2022
-            arch: x86
-            msvc_arch: x86
-          - os: windows-2022
-            arch: x86_64
-            msvc_arch: x64
-
-    runs-on: ${{ matrix.os }}
-    name: ${{ matrix.os }} / ${{ matrix.arch }}
+            cc: cl
+            cxx: cl
+            # Map our generic arch to MSVC specific arch for vcvars
+            msvc_arch: ${{ matrix.arch == 'x86' && 'x86' || 'x64' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v4
         with:
           submodules: recursive
-          path: src
 
-      - uses: actions/checkout@v4
-        with:
-          repository: alliedmodders/sourcemod
-          ref: 1.12-dev
-          path: sourcemod
-      - run: git -C sourcemod submodule update --init --recursive
-
-      - uses: actions/checkout@v4
-        with:
-          repository: alliedmodders/metamod-source
-          ref: 1.11-dev
-          path: mmsource
-
-      - uses: actions/checkout@v4
-        with:
-          repository: alliedmodders/hl2sdk
-          ref: dods
-          path: hl2sdk-dods
-
-      - uses: actions/checkout@v4
+      - name: Checkout AMBuild
+        uses: actions/checkout@v4
         with:
           repository: alliedmodders/ambuild
           path: ambuild
 
-      # Python 3.11 最稳，3.14 在 Windows GHA 上 ambuild 有边缘问题
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.x"
 
       - name: Install AMBuild (Linux)
         if: runner.os == 'Linux'
         run: sudo pip install ./ambuild
+
       - name: Install AMBuild (Windows)
         if: runner.os == 'Windows'
         run: pip install ./ambuild
 
-      - name: Linux deps
-        if: runner.os == 'Linux'
+      - name: Install Linux x86 dependencies
+        if: runner.os == 'Linux' && matrix.arch == 'x86'
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y gcc-multilib g++-multilib lib32stdc++6 \
+          sudo apt-get install -y --no-install-recommends \
+            gcc-multilib g++-multilib lib32stdc++6 \
             zlib1g-dev zlib1g-dev:i386 libc6-dev-i386 linux-libc-dev:i386
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then sudo apt-get install -y clang; fi
 
-      - name: MSVC (Windows)
-        if: runner.os == 'Windows'
+      - name: Install Linux x64 dependencies
+        if: runner.os == 'Linux' && matrix.arch == 'x86_64'
+        run: sudo apt-get install -y clang
+
+      - name: Setup MSVC (Windows x86)
+        if: runner.os == 'Windows' && matrix.msvc_arch == 'x86'
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: ${{ matrix.msvc_arch }}
+          arch: x86
 
-      # ===== Configure =====
+      - name: Setup MSVC (Windows x64)
+        if: runner.os == 'Windows' && matrix.msvc_arch == 'x64'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Configure (Linux)
         if: runner.os == 'Linux'
+        working-directory: src
         env:
           CC: ${{ matrix.cc }}
           CXX: ${{ matrix.cxx }}
-        working-directory: src
         run: |
-          python3 configure.py \
+          mkdir -p build && cd build
+          python3 ../configure.py \
             --targets=${{ matrix.arch }} \
-            --outdir=build \
             --enable-optimize \
             --sm-path=$GITHUB_WORKSPACE/sourcemod \
             --mms-path=$GITHUB_WORKSPACE/mmsource \
@@ -112,32 +101,20 @@ jobs:
         working-directory: src
         shell: cmd
         run: |
-          if not exist build mkdir build
-          cd build
-          python ../configure.py ^
+          mkdir build && cd build
+          py ../configure.py ^
             --targets=${{ matrix.arch }} ^
-            --outdir=. ^
             --enable-optimize ^
             --sm-path=%GITHUB_WORKSPACE%\sourcemod ^
             --mms-path=%GITHUB_WORKSPACE%\mmsource ^
             --hl2sdk-root=%GITHUB_WORKSPACE% ^
             --sdks=dod
-          if errorlevel 1 exit /b 1
 
-      # ===== Build =====
-      - name: Build (Linux)
-        if: runner.os == 'Linux'
+      - name: Build
         working-directory: src/build
         run: ambuild
 
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        working-directory: src/build
-        shell: cmd
-        run: ambuild
-
-      # ===== Package artifact =====
-      - name: Upload artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: dodhooks-${{ runner.os }}-${{ matrix.arch }}
@@ -150,11 +127,13 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/download-artifact@v4
-        with: { path: artifacts }
-      - name: Zip
+        with:
+          path: artifacts
+      - name: Zip Artifacts
         run: |
           cd artifacts
           for d in dodhooks-*; do zip -r "../$d.zip" "$d"; done
           cd ..
       - uses: softprops/action-gh-release@v2
-        with: { files: dodhooks-*.zip }
+        with:
+          files: dodhooks-*.zip
