@@ -38,7 +38,7 @@ asmSource = '../sourcemod/public/asm/asm.c'
 # ---- Simple extensions do not need to modify past this point ----
 
 builder.SetBuildFolder('package')
-from ambuild2 import Extension
+from AMBuild2 import Extension
 project = Extension.HL2Project(builder, projectName + '.ext')
 
 # Add main sources
