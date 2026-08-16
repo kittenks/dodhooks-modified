@@ -1,139 +1,138 @@
-#ifndef _INCLUDE_DODHOOKS_EXTENSION_H_
-#define _INCLUDE_DODHOOKS_EXTENSION_H_
+#ifndef _INCLUDE_SOURCEMOD_EXTENSION_PROPER_H_
+#define _INCLUDE_SOURCEMOD_EXTENSION_PROPER_H_
 
 #include "smsdk_ext.h"
-#include "smsdk_config.h"
-#include <sourcehook/sourcehook.h>
-#include <sourcehook/sh_vector.h>
-#include <vstdlib/random.h>
-#include <utlvector.h>
+#include "sm_datatable.h"
+#include "compat_wrappers.h"
 
-// Forward declarations
-class CBaseEntity;
-class CBasePlayer;
-class CDODPlayer;
-
-// ============================================================
-// Detour hook types
-// ============================================================
-
-// Voice command detour
-typedef void (*VoiceCommandFn)(void* pPlayer, int commandId);
-// Class change detour
-typedef void (*ClassChangeFn)(void* pPlayer, int classId);
-// Helmet pop detour
-typedef void (*HelmetPopFn)(void* pPlayer, void* pAttacker, void* pInflictor);
-// Spawn detour
-typedef void (*SpawnFn)(void* pEntity);
-// Think detour
-typedef void (*ThinkFn)(void* pEntity);
-// SetTeam detour
-typedef void (*SetTeamFn)(void* pPlayer, int team);
-// FireBullets detour
-typedef void (*FireBulletsFn)(void* pPlayer, int a, int b, void* c, void* d);
-
-// ============================================================
-// Forward declarations for forwards
-// ============================================================
-enum
-{
-    FWD_VOICECOMMAND = 0,
-    FWD_CLASSCHANGE,
-    FWD_HELMETPOP,
-    FWD_PRESPAWN,
-    FWD_POSTSPAWN,
-    FWD_TELEPORT,
-    FWD_CAPCONTROL,
-    FWD_BOMBPLANT,
-    FWD_BOMBDEFUSE,
-    FWD_ROUNDSTART,
-    FWD_ROUNDEND,
-    FWD_PLAYERDEATH,
-    FWD_MAX
-};
-
-// ============================================================
-// Main extension class
-// ============================================================
-class DoDHooks : public SDKExtension
+// CDetour is provided by the bintools extension
+// We declare the interface we need
+class CDetour
 {
 public:
-    DoDHooks();
-    ~DoDHooks();
-
-    // SDKExtension overrides
-    virtual bool SDK_OnLoad(char* error, size_t maxlength, bool late);
-    virtual void SDK_OnUnload();
-    virtual void SDK_OnAllLoaded();
-    virtual bool QueryRunning(char* error, size_t maxlength);
-
-    // SourceMod API
-    virtual const char* GetExtensionName();
-    virtual const char* GetExtensionURL();
-    virtual const char* GetExtensionTag();
-    virtual const char* GetExtensionAuthor();
-    virtual const char* GetExtensionVerString();
-    virtual const char* GetExtensionDescription();
-    virtual const char* GetExtensionLicense();
-
-    // Gamedata
-    bool LoadGamedata();
-    void UnloadGamedata();
-
-    // Hook management
-    bool HookVoiceCommand();
-    bool HookClassChange();
-    bool HookHelmetPop();
-    bool HookSpawn();
-    bool HookThink();
-    bool HookSetTeam();
-    bool HookFireBullets();
-
-    void UnhookAll();
-
-    // Forwards
-    IForward* GetForward(int fwdId) { return m_Forwards[fwdId]; }
-
-    // VTable helpers
-    void* GetEntityVTable(void* pEntity);
-    bool IsValidPlayer(int client);
-
-    // Globals
-    void* GetPlayerResource() { return m_pPlayerResource; }
-    void SetPlayerResource(void* p) { m_pPlayerResource = p; }
-
-private:
-    IForward* m_Forwards[FWD_MAX];
-    bool m_HooksActive;
-    void* m_pPlayerResource;
-
-    // Detour instances
-    VoiceCommandFn m_pOriginalVoiceCmd;
-    ClassChangeFn m_pOriginalClassChange;
-    HelmetPopFn m_pOriginalHelmetPop;
-    SpawnFn m_pOriginalSpawn;
-    ThinkFn m_pOriginalThink;
-    SetTeamFn m_pOriginalSetTeam;
-    FireBulletsFn m_pOriginalFireBullets;
+    virtual ~CDetour() {}
+    virtual bool EnableDetour() = 0;
+    virtual bool DisableDetour() = 0;
+    virtual void Destroy() = 0;
+    virtual bool IsEnabled() = 0;
 };
 
-extern DoDHooks g_DoDHooks;
+// Detour declaration macros (AMBuild 2.2 API)
+#define DETOUR_DECL_MEMBER0(name, rettype) \
+    rettype detour_##name()
 
-// ============================================================
-// Detour callback prototypes
-// ============================================================
-void Detour_VoiceCommand(void* pPlayer, int commandId);
-void Detour_ClassChange(void* pPlayer, int classId);
-void Detour_HelmetPop(void* pPlayer, void* pAttacker, void* pInflictor);
-void Detour_Spawn(void* pEntity);
-void Detour_Think(void* pEntity);
-void Detour_SetTeam(void* pPlayer, int team);
-void Detour_FireBullets(void* pPlayer, int a, int b, void* c, void* d);
+#define DETOUR_DECL_MEMBER1(name, rettype, t1, n1) \
+    rettype detour_##name(t1 n1)
 
-// Action return values
-#define DODHOOK_ACTION_CONTINUE  0
-#define DODHOOK_ACTION_CHANGED   1
-#define DODHOOK_ACTION_HANDLED   2
-#define DODHOOK_ACTION_STOP      3
+#define DETOUR_DECL_MEMBER2(name, rettype, t1, n1, t2, n2) \
+    rettype detour_##name(t1 n1, t2 n2)
 
-#endif // _INCLUDE_DODHOOKS_EXTENSION_H_
+#define DETOUR_MEMBER_CALL(name) detour_##name
+
+#define DETOUR_CREATE_MEMBER(detour, name, gamedata) \
+    CDetourManager::CreateDetour(g_pGameConf, (void*)&detour_##name, gamedata)
+
+#include "vglobals.h"
+#include "natives.h"
+
+// Macro definitions for easier access
+#define g_pGameHelpers gamehelpers
+#define g_pEngine engine
+#define g_pGameConfs gameconfs
+
+// External declarations
+extern IGameConfig *g_pGameConf;
+extern CGlobalVars *g_pGlobals;
+extern IBinTools *g_pBinTools;
+extern ISDKTools *g_pSDKTools;
+extern IServerGameEnts *g_pGameEnts;
+extern CSharedEdictChangeInfo *g_pSharedChangeInfo;
+extern INetworkStringTableContainer *netstringtables;
+
+extern uint32 g_iOffset_PlayerClass;
+extern uint32 g_iOffset_DesiredPlayerClass;
+extern uint32 g_iOffset_NumControlPoints;
+extern uint32 g_iOffset_AlliesIcons;
+extern uint32 g_iOffset_AxisIcons;
+extern uint32 g_iOffset_NeutralIcons;
+extern uint32 g_iOffset_TimerCapIcons;
+extern uint32 g_iOffset_BombedIcons;
+extern uint32 g_iOffset_CPIsVisible;
+extern uint32 g_iOffset_TimerPaused;
+extern uint32 g_iOffset_TimeRemaining;
+extern uint32 g_iOffset_TimerEndTime;
+
+extern void *g_pEntList;
+extern void **g_pObjectiveResource;
+
+#define DOD_MAXPLAYERS 33
+
+// Detour helper macros
+#define CREATE_DETOUR(detour, name, gamedata) \
+    do { \
+        detour = DETOUR_CREATE_MEMBER(detour, name, gamedata); \
+        if (detour != NULL) \
+        { \
+            detour->EnableDetour(); \
+        } \
+        else \
+        { \
+            if (szConfigError[0]) \
+            { \
+                snprintf(error, maxlength, "Fatal Error: Unable to load detour - %s: %s", gamedata, szConfigError); \
+            } \
+            else \
+            { \
+                snprintf(error, maxlength, "Fatal Error: Unable to load detour - %s", gamedata); \
+            } \
+            return false; \
+        } \
+    } while (0)
+
+#define REMOVE_DETOUR(detour) \
+    do { \
+        if (detour != NULL) \
+        { \
+            detour->Destroy(); \
+            detour = NULL; \
+        } \
+    } while (0)
+
+/**
+ * @brief Helper to get send prop offset
+ */
+inline uint32 GetSendPropOffset(const char *szNetClass, const char *szPropName)
+{
+    sm_sendprop_info_t SendPropInfo;
+
+    if (!g_pGameHelpers->FindSendPropInfo(szNetClass, szPropName, &SendPropInfo))
+    {
+        META_CONPRINTF("Fatal Error: Unable to get offset: %s::%s!\n", szNetClass, szPropName);
+        return -1;
+    }
+
+    return SendPropInfo.actual_offset;
+}
+
+/**
+ * @brief Main extension class
+ */
+class CDODHooks : public SDKExtension
+{
+public:
+    void OnSetCommandClient(int client);
+
+    virtual bool SDK_OnLoad(char *error, size_t maxlength, bool late) override;
+    virtual void SDK_OnUnload() override;
+    virtual void SDK_OnAllLoaded() override;
+    virtual bool QueryRunning(char *error, size_t maxlength) override;
+    virtual void NotifyInterfaceDrop(SMInterface *pInterface) override;
+
+#if defined SMEXT_CONF_METAMOD
+    virtual bool SDK_OnMetamodLoad(SourceMM::ISmmAPI *ismm, char *error, size_t maxlen, bool late) override;
+    virtual bool SDK_OnMetamodUnload(char *error, size_t maxlength) override;
+    virtual bool SDK_OnMetamodPauseChange(bool paused, char *error, size_t maxlength) override;
+#endif
+};
+
+#endif // _INCLUDE_SOURCEMOD_EXTENSION_PROPER_H_

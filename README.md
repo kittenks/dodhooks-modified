@@ -1,39 +1,106 @@
-# DoDHooks - Day of Defeat: Source Extension
+# DoDHooks
 
-[![Build Status](https://github.com/kittenks/dodhooks-modified/workflows/Build/badge.svg)](https://github.com/kittenks/dodhooks-modified/actions)
+Day of Defeat: Source 的 SourceMod 扩展，提供钩子（Hooks）和原生函数（Natives），
+兼容 **SourceMod 1.12 / 1.13**，支持 **Windows + Linux × x86 + x86_64**。
 
-A SourceMod extension for **Day of Defeat: Source** that provides server-side hooks and natives for plugin developers.
+## 功能
 
-## ✨ Features
+### Detour Hooks（检测/拦截）
+- `OnVoiceCommand` — 语音命令
+- `OnJoinClass` — 职业切换
+- `OnPopHelmet` — 头盔弹出
+- `OnPlayerRespawn` — 重生
+- `OnAddWaveTime` — 波次时间
+- `OnSetWinningTeam` — 胜利队伍
+- `OnEnterRoundState` — 回合状态
+- `OnEnterPlayerState` — 玩家状态
+- `OnEnterBombTargetState` — 炸弹目标状态
 
-- **Voice Command Hooks** - Intercept and modify voice chat commands
-- **Class Change Hooks** - Block or modify player class switches
-- **Helmet Pop Detection** - Detect when helmets are shot off
-- **Spawn Hooks** - Pre and post spawn events
-- **Control Point API** - Read/set capture point ownership and progress
-- **Bomb Target API** - Track bomb planting, defusal, and timers
-- **Round Timer Control** - Get and set round time
-- **Player State Natives** - Team, class, weapon queries and modifications
-- **Full 64-bit Support** - Works on both Windows and Linux, 32-bit and 64-bit
+### Natives（插件可调用的函数）
+- 玩家职业查询/设置
+- 控制点状态查询/修改
+- 炸弹目标查询
+- 计时器工具
+- 平台检测 `DODHooks_GetPlatform()`
 
-## 📋 Requirements
+## 目录结构
 
-- **SourceMod** 1.12 or 1.13
-- **Metamod:Source** 1.11 or 1.12
-- **Day of Defeat: Source** dedicated server
-- For compiling: see [Compilation Guide](#-compilation)
+```
+dodhooks/
+├── .github/workflows/build.yml   # GitHub Actions CI
+├── docker/
+│   ├── Dockerfile.linux         # Docker 编译环境
+│   ├── Dockerfile.windows      # Docker Windows 交叉编译
+│   └── docker-compose.yml      # 多架构编排
+├── scripts/
+│   ├── build-linux.sh          # Linux 本地编译
+│   ├── build-windows.bat       # Windows 本地编译
+│   ├── docker-build.sh        # Docker 容器内编译
+│   └── package-release.sh     # 一键打包发布
+├── sourcemod/
+│   ├── gamedata/dodhooks.txt  # 游戏数据签名
+│   ├── scripting/include/dodhooks.inc   # SourcePawn 头文件
+│   └── scripting/dodhooks_example.sp  # 示例插件
+├── extension.cpp / .h          # 扩展主逻辑
+├── natives.cpp / .h            # Native 函数实现
+├── vglobals.cpp / .h           # Valve 全局变量
+├── smsdk_config.h             # SDK 配置
+├── AMBuildScript              # AMBuild 构建脚本
+├── AMBuilder                  # AMBuild 构建规则
+├── configure.py               # 配置脚本
+└── README.md
+```
 
-## 🚀 Installation
+## 快速开始（编译）
 
-1. Download the latest release from the [Releases page](https://github.com/kittenks/dodhooks-modified/releases)
-2. Extract to your `dod/addons/` directory
-3. Load the extension:
-   ```
-   meta load addons/sourcemod/extensions/dodhooks.ext
-   ```
-4. Verify: `sm exts list` should show `[✓] DoDHooks`
+### 方式一：GitHub Actions（推荐）
 
-## 📦 Package Structure
+推送代码后自动编译，无需本地环境：
+
+```bash
+git push origin main
+```
+
+进入 GitHub → Actions 标签页，等待 4 个矩阵任务完成，下载 Artifacts。
+
+**打 Tag 自动发 Release：**
+
+```bash
+git tag v2.0.0
+git push origin v2.0.0
+```
+
+### 方式二：Docker（本地一键编译）
+
+```bash
+# 编译 x86_64
+docker build -f docker/Dockerfile.linux -t dodhooks-build .
+docker run --rm -v $(pwd):/workspace -e BUILD_ARCH=x86_64 dodhooks-build
+
+# 编译 x86
+docker run --rm -v $(pwd):/workspace -e BUILD_ARCH=x86 dodhooks-build
+```
+
+### 方式三：本地手动编译
+
+#### Linux
+
+```bash
+chmod +x scripts/build-linux.sh
+./scripts/build-linux.sh x86_64     # 或 x86
+```
+
+#### Windows
+
+```cmd
+scripts\build-windows.bat x86_64    :: 或 x86
+```
+
+需要：Python 3.11 + Visual Studio 2022 + Git。
+
+## 安装到服务器
+
+将编译产物解压后放到 `addons/sourcemod/` 对应目录：
 
 ```
 addons/sourcemod/
@@ -41,197 +108,66 @@ addons/sourcemod/
 │   └── dodhooks.ext.dll / dodhooks.ext.so
 ├── gamedata/
 │   └── dodhooks.txt
-├── scripting/
-│   ├── include/
-│   │   └── dodhooks.inc
-│   └── dodhooks_example.sp
-└── translations/
-    └── dodhooks.phrases.txt
+├── scripting/include/
+│   └── dodhooks.inc          (编译插件用)
+└── plugins/
+    └── dodhooks_example.smx (示例)
 ```
 
-## 🔧 Compilation
+## 依赖版本（已验证）
 
-### GitHub Actions (Recommended)
+| 组件 | 版本 | 说明 |
+|------|------|------|
+| SourceMod | 1.12-dev | 兼容 1.13 |
+| Metamod:Source | 1.12-dev | 兼容 1.13 |
+| hl2sdk | dods 分支 | DoD:S SDK |
+| AMBuild | master (源码安装) | 从 GitHub checkout 安装 |
+| Python | 3.11 | 3.12+ 未验证 |
+| 编译器 | GCC/Clang/MSVC 2022 | — |
 
-Push to your fork and GitHub Actions will automatically build for:
-- ✅ Windows x86_64
-- ✅ Linux x86_64
+## AMBuild 安装说明
 
-Download artifacts from the Actions tab.
-
-### Linux (Docker)
+本项目使用 AMBuild 作为构建系统。由于 PyPI 上的版本可能不兼容，
+**推荐从源码安装**：
 
 ```bash
-# Build the container
-docker build -f docker/Dockerfile.linux -t dodhooks-build .
-
-# Run build, mounting your source
-docker run --rm -v $(pwd):/src dodhooks-build
+git clone https://github.com/alliedmodders/ambuild
+pip install ./ambuild
 ```
 
-### Linux (Native)
+## API 速览
 
-```bash
-# Install dependencies
-sudo apt-get update
-sudo apt-get install -y build-essential gcc-multilib g++-multilib \
-    python3 python3-pip git clang
+```pawn
+// 获取当前平台
+DODPlatform:DODHooks_GetPlatform();
 
-# Install AMBuild
-pip3 install "AMBuild==2.2.0"
+// 职业切换钩子
+forward Action:OnJoinClass(client, &DODClass:class);
 
-# Clone dependencies
-git clone -b 1.12-dev https://github.com/alliedmodders/sourcemod
-git clone -b 1.12-dev https://github.com/alliedmodders/metamod-source
-git clone -b dods https://github.com/alliedmodders/hl2sdk hl2sdk-dods
+// 语音命令钩子
+forward Action:OnVoiceCommand(client, &voiceCommand);
 
-# Build
-chmod +x scripts/build-linux.sh
-./scripts/build-linux.sh x86_64
+// 控制点
+native DODHooks_GetCapPointState(controlpoint);
+native DODHooks_SetCapPointState(controlpoint, state);
+
+// 玩家职业
+native DODClass:DOD_GetPlayerClass(client);
+native DODHooks_SetPlayerClass(client, DODClass:class);
 ```
 
-### Windows (Native)
+完整 API 见 `sourcemod/scripting/include/dodhooks.inc`。
 
-```cmd
-:: Install Visual Studio 2022 with C++ workload
-:: Install Python 3.11 from python.org
+## 故障排查
 
-:: Install AMBuild
-pip install "AMBuild==2.2.0"
+| 问题 | 解决 |
+|------|------|
+| `ImportError: cannot import 'runplugin'` | AMBuild 版本不对，从源码重新安装最新 master |
+| `configure did not produce .ambuild2/vars` | configure 失败，检查依赖路径和 Python 版本 |
+| `unrecognized arguments: --outdir` | configure.py 不支持 `--outdir`，删除该参数 |
+| 运行时 `Failed to load extension` | gamedata 签名不匹配，更新 `dodhooks.txt` |
+| `No matching distribution for AMBuild` | 不要从 PyPI 安装，改用 `pip install ./ambuild`（源码） |
 
-:: Clone dependencies
-git clone -b 1.12-dev https://github.com/alliedmodders/sourcemod
-git clone -b 1.12-dev https://github.com/alliedmodders/metamod-source
-git clone -b dods https://github.com/alliedmodders/hl2sdk hl2sdk-dods
+## License
 
-:: Build (run from VS Developer Command Prompt)
-scripts\build-windows.bat x86_64
-```
-
-## 📝 API Reference
-
-### Natives
-
-| Native | Description |
-|--------|-------------|
-| `DODHooks_GetPlayerClass(client)` | Get player's current class |
-| `DODHooks_SetPlayerClass(client, classId)` | Change player's class |
-| `DODHooks_GetPlayerTeam(client)` | Get player's team |
-| `DODHooks_SetPlayerTeam(client, team)` | Move player to team |
-| `DODHooks_GetPlayerWeapon(client)` | Get active weapon ID |
-| `DODHooks_GivePlayerWeapon(client, weaponId)` | Give weapon to player |
-| `DODHooks_RemovePlayerWeapon(client, weaponId)` | Remove weapon |
-| `DODHooks_GetCapIndex(entity)` | Get control point index |
-| `DODHooks_GetCapOwner(cpIndex)` | Get CP owner team |
-| `DODHooks_SetCapOwner(cpIndex, team)` | Set CP owner team |
-| `DODHooks_GetCapProgress(cpIndex)` | Get capture progress (0-100) |
-| `DODHooks_GetBombTarget()` | Get active bomb target entity |
-| `DODHooks_IsBombPlanted()` | Check if bomb is planted |
-| `DODHooks_GetBombTimer()` | Get bomb timer seconds |
-| `DODHooks_GetRoundTime()` | Get current round time |
-| `DODHooks_SetRoundTime(seconds)` | Set round time |
-| `DODHooks_IsPlayerSpawned(client)` | Check if player is alive/spawned |
-| `DODHooks_GetPlatform()` | Get current platform constant |
-
-### Forwards
-
-| Forward | Description |
-|---------|-------------|
-| `DODHooks_OnVoiceCommand(client, commandId)` | Voice command fired |
-| `DODHooks_OnClassChange(client, oldClass, newClass)` | Class changing |
-| `DODHooks_OnHelmetPop(client, attacker, weaponId)` | Helmet popped off |
-| `DODHooks_OnPreSpawn(client)` | Before player spawns |
-| `DODHooks_OnPostSpawn(client)` | After player spawns |
-| `DODHooks_OnTeleport(client, origin, angles, velocity)` | Player teleported |
-| `DODHooks_OnCapControl(cpIndex, oldTeam, newTeam)` | CP changed hands |
-| `DODHooks_OnBombPlant(client, target)` | Bomb planted |
-| `DODHooks_OnBombDefuse(client, target)` | Bomb defused |
-| `DODHooks_OnRoundStart()` | Round started |
-| `DODHooks_OnRoundEnd(winner)` | Round ended |
-| `DODHooks_OnPlayerDeath(victim, attacker, weaponId)` | Player died |
-
-### Action Values
-
-Return these from forwards to control behavior:
-
-```sourcepawn
-#define DODHOOK_ACTION_CONTINUE  0  // Allow the action
-#define DODHOOK_ACTION_CHANGED   1  // Modified, use new values
-#define DODHOOK_ACTION_HANDLED   2  // Block, but don't stop chain
-#define DODHOOK_ACTION_STOP      3  // Block completely
-```
-
-## 🏗️ Project Structure
-
-```
-dodhooks/
-├── .github/workflows/    # GitHub Actions CI
-│   └── build.yml
-├── docker/               # Docker build containers
-│   ├── Dockerfile.linux
-│   ├── Dockerfile.windows
-│   └── docker-compose.yml
-├── scripts/             # Local build scripts
-│   ├── build-linux.sh
-│   └── build-windows.bat
-├── sourcemod/           # SourceMod-related files
-│   ├── gamedata/
-│   │   └── dodhooks.txt
-│   ├── scripting/
-│   │   ├── include/
-│   │   │   └── dodhooks.inc
-│   │   └── dodhooks_example.sp
-│   └── translations/
-│       └── dodhooks.phrases.txt
-├── extension.h/cpp      # Main extension logic
-├── natives.h/cpp        # SourcePawn natives
-├── vglobals.h/cpp       # Valve global variable access
-├── smsdk_config.h       # SDK configuration
-├── configure.py         # AMBuild configure script
-├── AMBuildScript        # AMBuild project definition
-├── AMBuilder            # AMBuild build rules
-├── PackageScript        # AMBuild packaging rules
-└── README.md
-```
-
-## 🐛 Troubleshooting
-
-### Extension fails to load
-
-Check `addons/sourcemod/logs/errors.log` for details. Common issues:
-- Wrong SM/MM version
-- Missing or outdated gamedata (`dodhooks.txt`)
-- Server not running Day of Defeat: Source
-
-### Hooks not firing
-
-Ensure the extension loaded successfully:
-```
-sm exts list
-```
-Verify gamedata offsets match your server version. Update `dodhooks.txt` if needed.
-
-### Build fails on CI
-
-Check the Actions tab for detailed logs. Common fixes:
-- Ensure all submodules are checked out
-- Verify Python 3.11 is being used
-- Check that AMBuild 2.2.0 is installed
-
-## 📄 License
-
-GPL v3 - See LICENSE file for details.
-
-## 🙏 Credits
-
-- Original DoDHooks by [DODSLeague](https://github.com/DODSLeague/dodhooks)
-- Updated gamedata by [DNA-styx](https://github.com/DNA-styx/dodhooks)
-- SourceMod team for the SDK and build system
-- AlliedModders community
-
-## 🔗 Links
-
-- [SourceMod](https://www.sourcemod.net/)
-- [Metamod:Source](https://www.metamodsource.org/)
-- [Day of Defeat: Source](https://store.steampowered.com/app/300/)
-- [AMBuild Documentation](https://wiki.alliedmods.net/AMBuild)
+GPL v2.0

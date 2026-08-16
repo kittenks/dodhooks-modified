@@ -1,38 +1,35 @@
-# -*- coding: utf-8 -*-
-"""
-DoDHooks AMBuilder
-Called by AMBuild to compile the extension
-"""
+# AMBuilder - 定义构建规则和文件复制
+# 此文件由 AMBuild 在构建阶段自动加载
 
-from ambuild2 import util
 import os
 
 def build(builder):
-    """Main build function called by AMBuild"""
+    """AMBuild 主构建函数"""
 
-    # Get project from AMBuildScript
-    project = builder.get_project('dodhooks.ext')
+    # 项目信息
+    project = builder.options.project
+    target = builder.options.target
 
-    # Compile each source file
-    objects = []
-    for src in project.sources:
-        obj = builder.compile_cpp(
-            source=src,
-            includes=project.includes,
-            defines=project.defines,
-            cpp_std=project.cpp_std,
-        )
-        objects.append(obj)
+    # 复制 gamedata 文件到产物目录
+    gamedata_src = os.path.join(builder.source_path, 'sourcemod', 'gamedata', 'dodhooks.txt')
+    gamedata_dst = os.path.join(builder.build_path, 'package', 'gamedata', 'dodhooks.txt')
+    if os.path.exists(gamedata_src):
+        builder.AddCopy(gamedata_src, gamedata_dst)
 
-    # Link into shared library
-    output = builder.link_shared(
-        output=project.output_file,
-        inputs=objects,
-        libs=project.libs,
-    )
+    # 复制 include 文件
+    include_src = os.path.join(builder.source_path, 'sourcemod', 'include', 'dodhooks.inc')
+    include_dst = os.path.join(builder.build_path, 'package', 'include', 'dodhooks.inc')
+    if os.path.exists(include_src):
+        builder.AddCopy(include_src, include_dst)
 
-    # Install to package directory
-    pkg_dir = os.path.join(builder.build_path, 'package')
-    builder.install(output, pkg_dir)
+    # 复制示例插件
+    example_src = os.path.join(builder.source_path, 'sourcemod', 'plugins', 'dodhooks_example.sp')
+    example_dst = os.path.join(builder.build_path, 'package', 'plugins', 'dodhooks_example.sp')
+    if os.path.exists(example_src):
+        builder.AddCopy(example_src, example_dst)
 
-    return output
+    # 复制 autoload 配置
+    autoload_src = os.path.join(builder.source_path, 'sourcemod', 'configs', 'dodhooks.autoload')
+    autoload_dst = os.path.join(builder.build_path, 'package', 'configs', 'dodhooks.autoload')
+    if os.path.exists(autoload_src):
+        builder.AddCopy(autoload_src, autoload_dst)

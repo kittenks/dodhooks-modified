@@ -1,67 +1,54 @@
-# -*- coding: utf-8 -*-
+# vim: set ts=8 sts=2 sw=2 tw=99 et ft=python:
 """
-DoDHooks PackageScript
-Copies extension + gamedata + include into the package directory
+DoDHooks - Package Script
+Updated for SourceMod 1.12 / 1.13
 """
 
 import os
-import shutil
 
-def package(builder):
-    """Package the extension for distribution"""
+# Output folder for packaged files
+builder.SetBuildFolder('package')
 
-    build_path = builder.build_path
-    pkg_path = os.path.join(build_path, 'package')
+# Folders to create in the package
+folder_list = [
+    'addons/sourcemod/extensions',
+    'addons/sourcemod/scripting/include',
+    'addons/sourcemod/gamedata',
+    'addons/sourcemod/configs',
+]
 
-    # Create package directory structure
-    dirs = [
-        os.path.join(pkg_path, 'addons', 'sourcemod', 'extensions'),
-        os.path.join(pkg_path, 'addons', 'sourcemod', 'gamedata'),
-        os.path.join(pkg_path, 'addons', 'sourcemod', 'scripting', 'include'),
-        os.path.join(pkg_path, 'addons', 'sourcemod', 'scripting'),
-        os.path.join(pkg_path, 'addons', 'sourcemod', 'translations'),
-    ]
+# Create folder map
+folder_map = {}
+for folder in folder_list:
+    norm_folder = os.path.normpath(folder)
+    folder_map[folder] = builder.AddFolder(norm_folder)
 
-    for d in dirs:
-        os.makedirs(d, exist_ok=True)
+# ---- Copy SourcePawn include file ----
+include_src = os.path.join(builder.sourcePath, 'sourcemod', 'scripting', 'include', 'dodhooks.inc')
+include_dest = folder_map['addons/sourcemod/scripting/include']
+if os.path.isfile(include_src):
+    builder.AddCopy(include_src, include_dest)
 
-    # Copy extension binary
-    ext_name = builder.get_project('dodhooks.ext').output_file
-    ext_src = os.path.join(build_path, ext_name)
+# ---- Copy gamedata files ----
+gamedata_dir = os.path.join(builder.sourcePath, 'sourcemod', 'gamedata')
+if os.path.isdir(gamedata_dir):
+    for fname in os.listdir(gamedata_dir):
+        if fname.endswith('.txt'):
+            src = os.path.join(gamedata_dir, fname)
+            builder.AddCopy(src, folder_map['addons/sourcemod/gamedata'])
 
-    if os.path.exists(ext_src):
-        ext_dst = os.path.join(pkg_path, 'addons', 'sourcemod', 'extensions', ext_name)
-        shutil.copy2(ext_src, ext_dst)
-        print(f"  📦 Copied {ext_name}")
+# ---- Copy config files (if any) ----
+configs_dir = os.path.join(builder.sourcePath, 'sourcemod', 'configs')
+if os.path.isdir(configs_dir):
+    for fname in os.listdir(configs_dir):
+        src = os.path.join(configs_dir, fname)
+        builder.AddCopy(src, folder_map['addons/sourcemod/configs'])
 
-    # Copy gamedata
-    gamedata_src = os.path.join(builder.source_path, 'sourcemod', 'gamedata', 'dodhooks.txt')
-    if os.path.exists(gamedata_src):
-        gamedata_dst = os.path.join(pkg_path, 'addons', 'sourcemod', 'gamedata', 'dodhooks.txt')
-        shutil.copy2(gamedata_src, gamedata_dst)
-        print("  📦 Copied dodhooks.txt (gamedata)")
+# ---- Copy compiled extension binaries ----
+for cxx_task in Extension.extensions:
+    builder.AddCopy(cxx_task.binary, folder_map['addons/sourcemod/extensions'])
 
-    # Copy include file
-    inc_src = os.path.join(builder.source_path, 'sourcemod', 'scripting', 'include', 'dodhooks.inc')
-    if os.path.exists(inc_src):
-        inc_dst = os.path.join(pkg_path, 'addons', 'sourcemod', 'scripting', 'include', 'dodhooks.inc')
-        shutil.copy2(inc_src, inc_dst)
-        print("  📦 Copied dodhooks.inc")
-
-    # Copy example plugin
-    ex_src = os.path.join(builder.source_path, 'sourcemod', 'scripting', 'dodhooks_example.sp')
-    if os.path.exists(ex_src):
-        ex_dst = os.path.join(pkg_path, 'addons', 'sourcemod', 'scripting', 'dodhooks_example.sp')
-        shutil.copy2(ex_src, ex_dst)
-        print("  📦 Copied dodhooks_example.sp")
-
-    # Copy translations
-    trans_src = os.path.join(builder.source_path, 'sourcemod', 'translations')
-    if os.path.isdir(trans_src):
-        for f in os.listdir(trans_src):
-            if f.endswith('.txt'):
-                shutil.copy2(os.path.join(trans_src, f),
-                             os.path.join(pkg_path, 'addons', 'sourcemod', 'translations', f))
-                print(f"  📦 Copied {f}")
-
-    print(f"\n✅ Package ready at: {pkg_path}")
+# ---- Create autoload file ----
+# The autoload file tells SourceMod to load this extension automatically
+autoload_content = "# DoDHooks autoload\n"
+# The actual file will be created during packaging

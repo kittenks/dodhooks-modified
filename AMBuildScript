@@ -1,106 +1,94 @@
-# -*- coding: utf-8 -*-
+# vim: set ts=2 sw=2 tw=99 noet ft=python:
 """
-DoDHooks AMBuildScript
-Generates the C++ extension using AMBuild 2.2
+DoDHooks - AMBuildScript
+AMBuild 2.2 / SourceMod 1.12 extension build script
 """
 
 from ambuild2 import Extension
 import os
 
-builder = getbuilder()
+# Project meta
+projectName = "dodhooks"
+projectVersion = "2.0.0"
 
-# ============================================================
-# Project definition
-# ============================================================
-project = Extension.HL2Project(builder, 'dodhooks.ext')
+# Path helpers
+def GetSDKPath(builder, sdkName):
+    """Resolve SDK path from builder options."""
+    root = builder.options.get('hl2sdk_root')
+    if root:
+        return os.path.join(root, 'hl2sdk-' + sdkName)
+    return None
 
-# ============================================================
-# Source files
-# ============================================================
-project.sources = [
-    'extension.cpp',
-    'natives.cpp',
-    'vglobals.cpp',
-]
+def GetPlatform(builder):
+    if builder.target_platform == 'windows':
+        return 'win'
+    elif builder.target_platform == 'linux':
+        return 'linux'
+    return 'unknown'
 
-# ============================================================
-# Include paths
-# ============================================================
-sm_root = builder.options.sm_root
-mm_root = builder.options.mm_root
-hl2sdk = builder.options.hl2sdk_path
+def GetArch(builder):
+    if builder.target_arch == 'x86_64':
+        return 'x64'
+    return 'x86'
 
-project.includes = [
-    os.path.join(sm_root, 'public'),
-    os.path.join(sm_root, 'public', 'sourcepawn'),
-    os.path.join(sm_root, 'public', 'amtl'),
-    os.path.join(sm_root, 'public', 'safetyhook'),
-    os.path.join(mm_root, 'core'),
-    os.path.join(mm_root, 'core', 'sourcehook'),
-    os.path.join(hl2sdk, 'public'),
-    os.path.join(hl2sdk, 'public', 'game'),
-    os.path.join(hl2sdk, 'public', 'tier1'),
-    os.getcwd(),
-]
+def build(builder):
+    platform = GetPlatform(builder)
+    arch = GetArch(builder)
 
-# ============================================================
-# Preprocessor defines
-# ============================================================
-project.defines = [
-    'DODHOOKS_BUILD',
-    'META_NO_HL2SDK',
-    'SNVISION',
-]
+    print("[DoDHooks] Building for {}-{}".format(platform, arch))
 
-# ============================================================
-# C++ standard
-# ============================================================
-project.cpp_std = 'c++17'
+    # Create HL2 extension project
+    # Extension.HL2Project handles SM/MM/hl2sdk include paths and linking
+    project = Extension.HL2Project(builder, projectName + '.ext')
 
-# ============================================================
-# Output filename (no extension - OS adds .dll/.so)
-# ============================================================
-project.output_file = 'dodhooks.ext'
+    # Compiler flags
+    if builder.target_platform == 'linux':
+        project.cxx.flags += [
+            '-fPIC',
+            '-Wall',
+            '-Wno-unknown-pragmas',
+            '-Wno-unused-function',
+            '-Wno-sign-compare',
+            '-Wno-unused-variable',
+        ]
+        project.cxx.defines += ['LINUX', 'POSIX']
+    else:
+        project.cxx.flags += [
+            '/W3',
+            '/MP',
+            '/wd4996',
+            '/wd4267',
+            '/wd4244',
+        ]
+        project.cxx.defines += ['WIN32', 'WINDOWS']
 
-# ============================================================
-# Platform-specific
-# ============================================================
-if builder.platform == 'windows':
-    project.defines.append('WIN32')
-    project.defines.append('_CRT_SECURE_NO_WARNINGS')
-    project.libs = [
-        'user32.lib',
-        'ws2_32.lib',
-        'advapi32.lib',
+    # Optimization
+    if builder.options.get('enable-optimize'):
+        if builder.target_platform == 'linux':
+            project.cxx.flags += ['-O2']
+        else:
+            project.cxx.flags += ['/O2']
+
+    # Debug info
+    if builder.options.get('enable-debug'):
+        if builder.target_platform == 'linux':
+            project.cxx.flags += ['-g']
+        else:
+            project.cxx.flags += ['/Zi']
+
+    # Source files (relative to this AMBuildScript)
+    sources = [
+        'extension.cpp',
+        'natives.cpp',
+        'vglobals.cpp',
     ]
-elif builder.platform == 'linux':
-    project.defines.append('POSIX')
-    project.defines.append('LINUX')
-    project.libs = [
-        'dl',
-        'pthread',
-        'tier1',
-    ]
+    for s in sources:
+        project.sources.append(s)
 
-# ============================================================
-# Debug/Release
-# ============================================================
-if builder.build_type == 'debug':
-    project.defines.append('DEBUG')
-    project.defines.append('_DEBUG')
-else:
-    project.defines.append('NDEBUG')
-    project.optimize = True
+    # Add the project to the build
+    builder.Add(project)
 
-# ============================================================
-# Dependencies
-# ============================================================
-project.depends_on('sourcemod')
-project.depends_on('metamod')
-
-# ============================================================
-# Register project
-# ============================================================
-builder.add_project(project)
-
-print("✅ AMBuildScript: dodhooks.ext configured")
+# Backward compatibility entry point
+if __name__ == '__main__':
+    from ambuild2 import run
+    run.Main()

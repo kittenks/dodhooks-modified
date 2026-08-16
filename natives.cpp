@@ -1,329 +1,636 @@
+#include "extension.h"
 #include "natives.h"
-#include <sourcemod.h>
-#include <sm_platform.h>
-#include <IPlayerHelpers.h>
-#include <iplayerinfo.h>
 
-// ============================================================
-// Native registration table
-// ============================================================
-const sp_nativeinfo_t g_Natives[] =
-{
-    {"DODHooks_GetPlayerClass",     Native_GetPlayerClass},
-    {"DODHooks_SetPlayerClass",     Native_SetPlayerClass},
-    {"DODHooks_GetPlayerTeam",      Native_GetPlayerTeam},
-    {"DODHooks_SetPlayerTeam",      Native_SetPlayerTeam},
-    {"DODHooks_GetPlayerWeapon",    Native_GetPlayerWeapon},
-    {"DODHooks_GivePlayerWeapon",   Native_GivePlayerWeapon},
-    {"DODHooks_RemovePlayerWeapon", Native_RemovePlayerWeapon},
-    {"DODHooks_GetCapIndex",        Native_GetCapIndex},
-    {"DODHooks_GetCapOwner",        Native_GetCapOwner},
-    {"DODHooks_SetCapOwner",        Native_SetCapOwner},
-    {"DODHooks_GetCapProgress",     Native_GetCapProgress},
-    {"DODHooks_GetBombTarget",      Native_GetBombTarget},
-    {"DODHooks_IsBombPlanted",      Native_IsBombPlanted},
-    {"DODHooks_GetBombTimer",       Native_GetBombTimer},
-    {"DODHooks_GetRoundTime",       Native_GetRoundTime},
-    {"DODHooks_SetRoundTime",       Native_SetRoundTime},
-    {"DODHooks_IsPlayerSpawned",    Native_IsPlayerSpawned},
-    {"DODHooks_GetPlatform",        Native_GetPlatform},
-    {nullptr, nullptr}
-};
+// ============================================================================
+// CBaseEdict::GetChangeAccessor override
+// ============================================================================
 
-void RegisterNatives()
+IChangeInfoAccessor *CBaseEdict::GetChangeAccessor()
 {
-    g_pSourcePawn->AddNatives(g_Natives);
+    return g_pEngine->GetChangeAccessor((const edict_t *)this);
 }
 
-// ============================================================
-// Helper: get CBaseEntity pointer from client index
-// ============================================================
-void* GetEntityPtr(int client)
-{
-    IGamePlayer* pPlayer = playerhelpers->GetGamePlayer(client);
-    if (!pPlayer || !pPlayer->IsInGame())
-        return nullptr;
-
-    edict_t* pEdict = pPlayer->GetEdict();
-    if (!pEdict)
-        return nullptr;
-
-    return pEdict->GetUnknown();
-}
-
-// ============================================================
+// ============================================================================
 // Player class natives
-// ============================================================
-cell_t Native_GetPlayerClass(IPluginContext* pContext, const cell_t* params)
-{
-    int client = params[1];
+// ============================================================================
 
-    if (client < 1 || client > 32)
+cell_t Native_GetPlayerClass(IPluginContext *pContext, const cell_t *Params)
+{
+    edict_t *pEdict = g_pEngine->PEntityOfEntIndex(Params[1]);
+    CBaseEntity *pEntity = g_pGameEnts->EdictToBaseEntity(pEdict);
+
+    if (!pEntity || strcmp(pEdict->GetClassName(), "player") != 0)
     {
-        pContext->ThrowNativeError("Invalid client index %d", client);
-        return -1;
+        return pContext->ThrowNativeError("Client index %d is not valid", Params[1]);
     }
 
-    IGamePlayer* pPlayer = playerhelpers->GetGamePlayer(client);
-    if (!pPlayer || !pPlayer->IsInGame())
-        return -1;
-
-    IPlayerInfo* pInfo = pPlayer->GetPlayerInfo();
-    if (!pInfo)
-        return -1;
-
-    // DoD:S stores class in m_iPlayerClass (offset varies by version)
-    // We read it via the player info interface
-    return pInfo->GetClassId();
+    return OFFSET(int, pEntity, g_iOffset_PlayerClass);
 }
 
-cell_t Native_SetPlayerClass(IPluginContext* pContext, const cell_t* params)
+cell_t Native_SetPlayerClass(IPluginContext *pContext, const cell_t *Params)
 {
-    int client = params[1];
-    int classId = params[2];
+    edict_t *pEdict = g_pEngine->PEntityOfEntIndex(Params[1]);
+    CBaseEntity *pEntity = g_pGameEnts->EdictToBaseEntity(pEdict);
 
-    if (client < 1 || client > 32)
+    if (!pEntity || strcmp(pEdict->GetClassName(), "player") != 0)
     {
-        pContext->ThrowNativeError("Invalid client index %d", client);
+        return pContext->ThrowNativeError("Client index %d is not valid", Params[1]);
+    }
+    
+    if (Params[2] < PlayerClass_Random || Params[2] >= PlayerClass_Size)
+    {
+        return pContext->ThrowNativeError("Player class %d is not valid", Params[2]);
+    }
+
+    OFFSET(int, pEntity, g_iOffset_PlayerClass) = Params[2];
+
+    return true;
+}
+
+cell_t Native_GetDesiredPlayerClass(IPluginContext *pContext, const cell_t *Params)
+{
+    edict_t *pEdict = g_pEngine->PEntityOfEntIndex(Params[1]);
+    CBaseEntity *pEntity = g_pGameEnts->EdictToBaseEntity(pEdict);
+
+    if (!pEntity || strcmp(pEdict->GetClassName(), "player") != 0)
+    {
+        return pContext->ThrowNativeError("Client index %d is not valid", Params[1]);
+    }
+
+    return OFFSET(int, pEntity, g_iOffset_DesiredPlayerClass);
+}
+
+cell_t Native_SetDesiredPlayerClass(IPluginContext *pContext, const cell_t *Params)
+{
+    edict_t *pEdict = g_pEngine->PEntityOfEntIndex(Params[1]);
+    CBaseEntity *pEntity = g_pGameEnts->EdictToBaseEntity(pEdict);
+
+    if (!pEntity || strcmp(pEdict->GetClassName(), "player") != 0)
+    {
+        return pContext->ThrowNativeError("Client index %d is not valid", Params[1]);
+    }
+    
+    if (Params[2] < PlayerClass_Random || Params[2] >= PlayerClass_Size)
+    {
+        return pContext->ThrowNativeError("Player class %d is not valid", Params[2]);
+    }
+
+    OFFSET(int, pEntity, g_iOffset_DesiredPlayerClass) = Params[2];
+
+    return true;
+}
+
+// ============================================================================
+// PopHelmet native
+// ============================================================================
+
+cell_t Native_PopHelmet(IPluginContext *pContext, const cell_t *Params)
+{
+    edict_t *pEdict = g_pEngine->PEntityOfEntIndex(Params[1]);
+    CBaseEntity *pEntity = g_pGameEnts->EdictToBaseEntity(pEdict);
+
+    if (!pEntity || strcmp(pEdict->GetClassName(), "player") != 0)
+    {
+        return pContext->ThrowNativeError("Client index %d is not valid", Params[1]);
+    }
+
+    static ICallWrapper *pWrapper = NULL;
+    
+    REGISTER_NATIVE_ADDR("PopHelmet",
+    {
+        PassInfo Pass[2];
+        Pass[0].flags = PASSFLAG_BYVAL;
+        Pass[0].size = sizeof(Vector);
+        Pass[0].type = PassType_Basic;
+        Pass[1].flags = PASSFLAG_BYVAL;
+        Pass[1].size = sizeof(Vector);
+        Pass[1].type = PassType_Basic;
+        pWrapper = g_pBinTools->CreateCall(pAddress, CallConv_ThisCall, NULL, Pass, 2);
+    });
+
+    cell_t *pAddr1, *pAddr2;
+
+    pContext->LocalToPhysAddr(Params[2], &pAddr1);
+    pContext->LocalToPhysAddr(Params[3], &pAddr2);
+
+    unsigned char vstk[sizeof(CBaseEntity *) + (sizeof(Vector) * 2)];
+    unsigned char *vptr = vstk;
+
+    *(CBaseEntity **)vptr = pEntity;
+    vptr += sizeof(CBaseEntity *);
+
+    *(Vector *)vptr = Vector(sp_ctof(pAddr1[0]), sp_ctof(pAddr1[1]), sp_ctof(pAddr1[2]));
+    vptr += sizeof(Vector);
+
+    *(Vector *)vptr = Vector(sp_ctof(pAddr2[0]), sp_ctof(pAddr2[1]), sp_ctof(pAddr2[2]));
+
+    pWrapper->Execute(vstk, NULL);
+
+    return true;
+}
+
+// ============================================================================
+// Control Point natives
+// ============================================================================
+
+cell_t Native_SetNumControlPoints(IPluginContext *pContext, const cell_t *Params)
+{
+    if (!g_pObjectiveResource)
+    {
+        return pContext->ThrowNativeError("g_pObjectiveResource is NULL");
+    }
+
+    CBaseEntity *pObjectiveResource = (CBaseEntity *)*g_pObjectiveResource;
+
+    if (!pObjectiveResource)
+    {
+        return pContext->ThrowNativeError("ObjectiveResource not available before map is loaded");
+    }
+    
+    OFFSET(int, pObjectiveResource, g_iOffset_NumControlPoints) = Params[1];
+
+    g_pGameEnts->BaseEntityToEdict(pObjectiveResource)->StateChanged(g_iOffset_NumControlPoints);
+
+    return true;
+}
+
+// ============================================================================
+// Material / Icon helpers
+// ============================================================================
+
+void PrecacheMaterial(const char *szMaterialName)
+{
+    INetworkStringTable *pTable = netstringtables->FindTable("Materials");
+    if (pTable)
+    {
+        pTable->AddString(true, szMaterialName);
+    }
+}
+
+int GetMaterialIndex(const char *pMaterialName)
+{
+    INetworkStringTable *pTable = netstringtables->FindTable("Materials");
+    if (!pTable)
+    {
         return 0;
     }
 
-    if (classId < 0 || classId > 5)
-    {
-        pContext->ThrowNativeError("Invalid class id %d (must be 0-5)", classId);
+    int idx = pTable->FindStringIndex(pMaterialName);
+    if (idx == INVALID_STRING_INDEX)
         return 0;
+    else
+        return idx;
+}
+
+cell_t Native_PrecacheCPIcon(IPluginContext *pContext, const cell_t *Params)
+{
+    char *szMaterialName;
+    pContext->LocalToString(Params[1], &szMaterialName);
+
+    PrecacheMaterial(szMaterialName);
+
+    return GetMaterialIndex(szMaterialName);
+}
+
+cell_t Native_SetCPIcons(IPluginContext *pContext, const cell_t *Params)
+{
+    if (!g_pObjectiveResource)
+    {
+        return pContext->ThrowNativeError("g_pObjectiveResource is NULL");
+    }
+    
+    CBaseEntity *pObjectiveResource = (CBaseEntity *)*g_pObjectiveResource;
+
+    if (!pObjectiveResource)
+    {
+        return pContext->ThrowNativeError("ObjectiveResource not available before map is loaded");
     }
 
-    void* pEntity = GetEntityPtr(client);
-    if (!pEntity)
-        return 0;
-
-    // In DoD:S, class change is handled by the server via the
-    // "dod_changeclass" command or directly via the ClassChange detour
-    // We trigger the change through the console command
-    char cmd[64];
-    snprintf(cmd, sizeof(cmd), "dod_changeclass %d", classId);
-
-    // Use engine->ServerCommand or execute on client
-    IGamePlayer* pPlayer = playerhelpers->GetGamePlayer(client);
-    if (pPlayer)
+    if (Params[1] < 0 || Params[1] >= MAX_CONTROL_POINTS)
     {
-        // Send the command to the client
-        engine->ClientCommand(pPlayer->GetEdict(), "dod_changeclass %d", classId);
-        return 1;
+        return pContext->ThrowNativeError("Control point index %d is not valid", Params[1]);
     }
 
-    return 0;
-}
+    edict_t *pEdict = g_pGameEnts->BaseEntityToEdict(pObjectiveResource);
 
-cell_t Native_GetPlayerTeam(IPluginContext* pContext, const cell_t* params)
-{
-    int client = params[1];
+    uint8 arrayElement = Params[1] * sizeof(int);
 
-    if (client < 1 || client > 32)
+    if (Params[2])
     {
-        pContext->ThrowNativeError("Invalid client index %d", client);
-        return 0;
+        OFFSET(int, pObjectiveResource, g_iOffset_AlliesIcons + arrayElement) = Params[2];
+        pEdict->StateChanged(g_iOffset_AlliesIcons + arrayElement);
     }
 
-    IGamePlayer* pPlayer = playerhelpers->GetGamePlayer(client);
-    if (!pPlayer || !pPlayer->IsInGame())
-        return 0;
-
-    return pPlayer->GetTeamIndex();
-}
-
-cell_t Native_SetPlayerTeam(IPluginContext* pContext, const cell_t* params)
-{
-    int client = params[1];
-    int team = params[2];
-
-    if (client < 1 || client > 32)
+    if (Params[3])
     {
-        pContext->ThrowNativeError("Invalid client index %d", client);
-        return 0;
+        OFFSET(int, pObjectiveResource, g_iOffset_AxisIcons + arrayElement) = Params[3];
+        pEdict->StateChanged(g_iOffset_AxisIcons + arrayElement);
     }
 
-    if (team < 1 || team > 3)
+    if (Params[4])
     {
-        pContext->ThrowNativeError("Invalid team %d (must be 1-3)", team);
-        return 0;
+        OFFSET(int, pObjectiveResource, g_iOffset_NeutralIcons + arrayElement) = Params[4]; 
+        pEdict->StateChanged(g_iOffset_NeutralIcons + arrayElement);
     }
 
-    IGamePlayer* pPlayer = playerhelpers->GetGamePlayer(client);
-    if (!pPlayer)
-        return 0;
+    if (Params[5])
+    {
+        OFFSET(int, pObjectiveResource, g_iOffset_TimerCapIcons + arrayElement) = Params[5]; 
+        pEdict->StateChanged(g_iOffset_TimerCapIcons + arrayElement);
+    }
 
-    // Change team via engine
-    engine->ChangePlayerTeam(pPlayer->GetEdict(), team);
-    return 1;
+    if (Params[6])
+    {
+        OFFSET(int, pObjectiveResource, g_iOffset_BombedIcons + arrayElement) = Params[6]; 
+        pEdict->StateChanged(g_iOffset_BombedIcons + arrayElement);
+    }
+
+    return true;
 }
 
-// ============================================================
-// Weapon natives
-// ============================================================
-cell_t Native_GetPlayerWeapon(IPluginContext* pContext, const cell_t* params)
+cell_t Native_SetCPVisible(IPluginContext *pContext, const cell_t *Params)
 {
-    int client = params[1];
+    if (!g_pObjectiveResource)
+    {
+        return pContext->ThrowNativeError("g_pObjectiveResource is NULL");
+    }
 
-    if (client < 1 || client > 32)
-        return -1;
+    CBaseEntity *pObjectiveResource = (CBaseEntity *)*g_pObjectiveResource;
 
-    IGamePlayer* pPlayer = playerhelpers->GetGamePlayer(client);
-    if (!pPlayer || !pPlayer->IsInGame())
-        return -1;
+    if (!pObjectiveResource)
+    {
+        return pContext->ThrowNativeError("ObjectiveResource not available before map is loaded");
+    }
 
-    IPlayerInfo* pInfo = pPlayer->GetPlayerInfo();
-    if (!pInfo)
-        return -1;
+    if (Params[1] < 0 || Params[1] >= MAX_CONTROL_POINTS)
+    {
+        return pContext->ThrowNativeError("Control point index %d is not valid", Params[1]);
+    }
 
-    // Get active weapon ID
-    return pInfo->GetWeaponId();
+    uint8 arrayElement = Params[1] * sizeof(int);
+
+    OFFSET(int, pObjectiveResource, g_iOffset_CPIsVisible + arrayElement) = Params[2];
+
+    g_pGameEnts->BaseEntityToEdict(pObjectiveResource)->StateChanged(g_iOffset_CPIsVisible + arrayElement);
+
+    return true;
 }
 
-cell_t Native_GivePlayerWeapon(IPluginContext* pContext, const cell_t* params)
-{
-    int client = params[1];
-    int weaponId = params[2];
-
-    if (client < 1 || client > 32)
-        return 0;
-
-    IGamePlayer* pPlayer = playerhelpers->GetGamePlayer(client);
-    if (!pPlayer || !pPlayer->IsInGame())
-        return 0;
-
-    // Give weapon via command
-    const char* weaponNames[] = {
-        "weapon_garand", "weapon_kar98", "weapon_bar",
-        "weapon_mp40", "weapon_thompson", "weapon_stg44",
-        "weapon_springfield", "weapon_30cal", "weapon_mg42",
-        "weapon_bazooka", "weapon_panzerfaust",
-        "weapon_p38", "weapon_c96", "weapon_m1carbine"
-    };
-
-    if (weaponId < 0 || weaponId >= (int)(sizeof(weaponNames)/sizeof(weaponNames[0])))
-        return 0;
-
-    engine->ClientCommand(pPlayer->GetEdict(), "give %s", weaponNames[weaponId]);
-    return 1;
-}
-
-cell_t Native_RemovePlayerWeapon(IPluginContext* pContext, const cell_t* params)
-{
-    int client = params[1];
-    int weaponId = params[2];
-
-    // Stub: actual implementation would find weapon entity and remove
-    return 1;
-}
-
-// ============================================================
-// Control point natives
-// ============================================================
-cell_t Native_GetCapIndex(IPluginContext* pContext, const cell_t* params)
-{
-    int entity = params[1];
-    // Stub: read m_iPointIndex from CDoDObjectiveResource
-    return 0;
-}
-
-cell_t Native_GetCapOwner(IPluginContext* pContext, const cell_t* params)
-{
-    int capIndex = params[1];
-    // Stub: read team ownership from objective resource
-    return 0;
-}
-
-cell_t Native_SetCapOwner(IPluginContext* pContext, const cell_t* params)
-{
-    int capIndex = params[1];
-    int team = params[2];
-    // Stub: set team ownership
-    return 0;
-}
-
-cell_t Native_GetCapProgress(IPluginContext* pContext, const cell_t* params)
-{
-    int capIndex = params[1];
-    // Stub: return capture progress 0-100
-    return 0;
-}
-
-// ============================================================
-// Bomb target natives
-// ============================================================
-cell_t Native_GetBombTarget(IPluginContext* pContext, const cell_t* params)
-{
-    // Stub: find active bomb target entity
-    return 0;
-}
-
-cell_t Native_IsBombPlanted(IPluginContext* pContext, const cell_t* params)
-{
-    // Stub: check bomb planted state
-    return 0;
-}
-
-cell_t Native_GetBombTimer(IPluginContext* pContext, const cell_t* params)
-{
-    // Stub: return bomb timer in seconds
-    return 0;
-}
-
-// ============================================================
+// ============================================================================
 // Timer natives
-// ============================================================
-cell_t Native_GetRoundTime(IPluginContext* pContext, const cell_t* params)
+// ============================================================================
+
+cell_t Native_PauseTimer(IPluginContext *pContext, const cell_t *Params)
 {
-    // Stub: read round timer
-    return 0;
+    edict_t *pEdict = g_pEngine->PEntityOfEntIndex(Params[1]);
+    CBaseEntity *pEntity = g_pGameEnts->EdictToBaseEntity(pEdict);
+
+    if (!pEntity || strcmp(pEdict->GetClassName(), "dod_round_timer") != 0)
+    {
+        return pContext->ThrowNativeError("Entity index %d is not valid", Params[1]);
+    }
+
+    if (!OFFSET(bool, pEntity, g_iOffset_TimerPaused))
+    {
+        OFFSET(float, pEntity, g_iOffset_TimeRemaining) = OFFSET(float, pEntity, g_iOffset_TimerEndTime) - g_pGlobals->curtime;
+        OFFSET(bool, pEntity, g_iOffset_TimerPaused) = true;
+
+        pEdict->StateChanged(g_iOffset_TimeRemaining);
+        pEdict->StateChanged(g_iOffset_TimerPaused);
+    }
+
+    return true;
 }
 
-cell_t Native_SetRoundTime(IPluginContext* pContext, const cell_t* params)
+cell_t Native_ResumeTimer(IPluginContext *pContext, const cell_t *Params)
 {
-    int seconds = params[1];
-    // Stub: set round timer
-    return 0;
+    edict_t *pEdict = g_pEngine->PEntityOfEntIndex(Params[1]);
+    CBaseEntity *pEntity = g_pGameEnts->EdictToBaseEntity(pEdict);
+
+    if (!pEntity || strcmp(pEdict->GetClassName(), "dod_round_timer") != 0)
+    {
+        return pContext->ThrowNativeError("Entity index %d is not valid", Params[1]);
+    }
+
+    if (OFFSET(bool, pEntity, g_iOffset_TimerPaused))
+    {
+        OFFSET(float, pEntity, g_iOffset_TimerEndTime) = OFFSET(float, pEntity, g_iOffset_TimeRemaining) + g_pGlobals->curtime;
+        OFFSET(bool, pEntity, g_iOffset_TimerPaused) = false;
+
+        pEdict->StateChanged(g_iOffset_TimerEndTime);
+        pEdict->StateChanged(g_iOffset_TimerPaused);
+    }
+
+    return true;
 }
 
-// ============================================================
-// Misc natives
-// ============================================================
-cell_t Native_IsPlayerSpawned(IPluginContext* pContext, const cell_t* params)
+cell_t Native_SetTimeRemaining(IPluginContext *pContext, const cell_t *Params)
 {
-    int client = params[1];
+    edict_t *pEdict = g_pEngine->PEntityOfEntIndex(Params[1]);
+    CBaseEntity *pEntity = g_pGameEnts->EdictToBaseEntity(pEdict);
 
-    if (client < 1 || client > 32)
-        return 0;
+    if (!pEntity || strcmp(pEdict->GetClassName(), "dod_round_timer") != 0)
+    {
+        return pContext->ThrowNativeError("Entity index %d is not valid", Params[1]);
+    }
 
-    IGamePlayer* pPlayer = playerhelpers->GetGamePlayer(client);
-    if (!pPlayer || !pPlayer->IsInGame())
-        return 0;
+    float fTime = sp_ctof(Params[2]);
+    OFFSET(float, pEntity, g_iOffset_TimeRemaining) = fTime;
+    OFFSET(float, pEntity, g_iOffset_TimerEndTime) = g_pGlobals->curtime + fTime;
 
-    // Check if player is alive and spawned
-    IPlayerInfo* pInfo = pPlayer->GetPlayerInfo();
-    if (!pInfo)
-        return 0;
+    pEdict->StateChanged(g_iOffset_TimeRemaining);
+    pEdict->StateChanged(g_iOffset_TimerEndTime);
 
-    return pInfo->IsDead() ? 0 : 1;
+    return true;
 }
 
-cell_t Native_GetPlatform(IPluginContext* pContext, const cell_t* params)
+cell_t Native_GetTimeRemaining(IPluginContext *pContext, const cell_t *Params)
 {
-#if defined(PLATFORM_WINDOWS)
-    #if defined(PLATFORM_X64)
-        return 2; // Windows 64-bit
+    edict_t *pEdict = g_pEngine->PEntityOfEntIndex(Params[1]);
+    CBaseEntity *pEntity = g_pGameEnts->EdictToBaseEntity(pEdict);
+
+    if (!pEntity || strcmp(pEdict->GetClassName(), "dod_round_timer") != 0)
+    {
+        return pContext->ThrowNativeError("Entity index %d is not valid", Params[1]);
+    }
+
+    float fTimeRemaining;
+    
+    if (OFFSET(bool, pEntity, g_iOffset_TimerPaused))
+    {
+        fTimeRemaining = OFFSET(float, pEntity, g_iOffset_TimeRemaining);
+    }
+    else
+    {
+        fTimeRemaining = OFFSET(float, pEntity, g_iOffset_TimerEndTime) - g_pGlobals->curtime;
+    }
+
+    if (fTimeRemaining < 0.0f)
+    {
+        fTimeRemaining = 0.0f;
+    }
+
+    return sp_ftoc(fTimeRemaining);
+}
+
+// ============================================================================
+// Respawn native
+// ============================================================================
+
+cell_t Native_RespawnPlayer(IPluginContext *pContext, const cell_t *Params)
+{
+    edict_t *pEdict = g_pEngine->PEntityOfEntIndex(Params[1]);
+    CBaseEntity *pEntity = g_pGameEnts->EdictToBaseEntity(pEdict);
+
+    if (!pEntity || strcmp(pEdict->GetClassName(), "player") != 0)
+    {
+        return pContext->ThrowNativeError("Client index %d is not valid", Params[1]);
+    }
+    
+    if (Params[2])
+    {
+        int iPlayerClass = OFFSET(int, pEntity, g_iOffset_DesiredPlayerClass);
+
+        if (iPlayerClass == PlayerClass_None)
+        {
+            return pContext->ThrowNativeError("Player class is not set");
+        }
+    }
+    
+    static ICallWrapper *pWrapper = NULL;
+
+    REGISTER_NATIVE_ADDR("DODRespawn",
+    {
+        pWrapper = g_pBinTools->CreateCall(pAddress, CallConv_ThisCall, NULL, NULL, 0);
+    });
+
+    pWrapper->Execute(&pEntity, NULL);
+
+    return true;
+}
+
+// ============================================================================
+// AddWaveTime native
+// ============================================================================
+
+cell_t Native_AddWaveTime(IPluginContext *pContext, const cell_t *Params)
+{
+    if (Params[1] != Team_Allies && Params[1] != Team_Axis)
+    {
+        return pContext->ThrowNativeError("Team index %i is not valid", Params[1]);
+    }
+    
+    static ICallWrapper *pWrapper = NULL;
+
+    REGISTER_NATIVE_ADDR("AddWaveTime",
+    {
+        PassInfo Pass[2];
+        Pass[0].flags = PASSFLAG_BYVAL;
+        Pass[0].size = sizeof(int);
+        Pass[0].type = PassType_Basic;
+        Pass[1].flags = PASSFLAG_BYVAL;
+        Pass[1].size = sizeof(float);
+        Pass[1].type = PassType_Basic;
+        pWrapper = g_pBinTools->CreateCall(pAddress, CallConv_ThisCall, NULL, Pass, 2);
+    });
+    
+    void *pGameRules = g_pSDKTools->GetGameRules();
+
+    if (!pGameRules)
+    {
+        return pContext->ThrowNativeError("GameRules not available before map is loaded");
+    }
+
+    unsigned char vstk[sizeof(void *) + sizeof(int) + sizeof(float)];
+    unsigned char *vptr = vstk;
+
+    *(void **)vptr = pGameRules;
+    vptr += sizeof(void *);
+
+    *(int *)vptr = Params[1];
+    vptr += sizeof(int);
+
+    *(float *)vptr = sp_ctof(Params[2]);
+
+    pWrapper->Execute(vstk, NULL);
+
+    return true;
+}
+
+// ============================================================================
+// SetWinningTeam native
+// ============================================================================
+
+cell_t Native_SetWinningTeam(IPluginContext *pContext, const cell_t *Params)
+{
+    if (Params[1] != Team_Allies && Params[1] != Team_Axis)
+    {
+        return pContext->ThrowNativeError("Team index %d is not valid", Params[1]);
+    }
+
+    static ICallWrapper *pWrapper = NULL;
+
+    REGISTER_NATIVE_ADDR("SetWinningTeam",
+    {
+        PassInfo Pass[1];
+        Pass[0].flags = PASSFLAG_BYVAL;
+        Pass[0].size = sizeof(int);
+        Pass[0].type = PassType_Basic;
+        pWrapper = g_pBinTools->CreateCall(pAddress, CallConv_ThisCall, NULL, Pass, 1);
+    });
+
+    void *pGameRules = g_pSDKTools->GetGameRules();
+
+    if (!pGameRules)
+    {
+        return pContext->ThrowNativeError("GameRules not available before map is loaded");
+    }
+
+    unsigned char vstk[sizeof(void *) + sizeof(int)];
+    unsigned char *vptr = vstk;
+
+    *(void **)vptr = pGameRules;
+    vptr += sizeof(void *);
+
+    *(int *)vptr = Params[1];
+
+    pWrapper->Execute(vstk, NULL);
+
+    return true;
+}
+
+// ============================================================================
+// SetRoundState native
+// ============================================================================
+
+cell_t Native_SetRoundState(IPluginContext *pContext, const cell_t *Params)
+{
+    static ICallWrapper *pWrapper = NULL;
+
+    REGISTER_NATIVE_ADDR("RoundState",
+    {
+        PassInfo Pass[1];
+        Pass[0].flags = PASSFLAG_BYVAL;
+        Pass[0].size = sizeof(int);
+        Pass[0].type = PassType_Basic;
+        pWrapper = g_pBinTools->CreateCall(pAddress, CallConv_ThisCall, NULL, Pass, 1);
+    });
+
+    void *pGameRules = g_pSDKTools->GetGameRules();
+
+    if (!pGameRules)
+    {
+        return pContext->ThrowNativeError("GameRules not available before map is loaded");
+    }
+
+    unsigned char vstk[sizeof(void *) + sizeof(int)];
+    unsigned char *vptr = vstk;
+
+    *(void **)vptr = pGameRules;
+    vptr += sizeof(void *);
+
+    *(int *)vptr = Params[1];
+
+    pWrapper->Execute(vstk, NULL);
+
+    return true;
+}
+
+// ============================================================================
+// SetPlayerState native
+// ============================================================================
+
+cell_t Native_SetPlayerState(IPluginContext *pContext, const cell_t *Params)
+{
+    edict_t *pEdict = g_pEngine->PEntityOfEntIndex(Params[1]);
+    CBaseEntity *pEntity = g_pGameEnts->EdictToBaseEntity(pEdict);
+
+    if (!pEntity || strcmp(pEdict->GetClassName(), "player") != 0)
+    {
+        return pContext->ThrowNativeError("Client index %d is not valid", Params[1]);
+    }
+
+    static ICallWrapper *pWrapper = NULL;
+
+    REGISTER_NATIVE_ADDR("PlayerState",
+    {
+        PassInfo Pass[1];
+        Pass[0].flags = PASSFLAG_BYVAL;
+        Pass[0].size = sizeof(int);
+        Pass[0].type = PassType_Basic;
+        pWrapper = g_pBinTools->CreateCall(pAddress, CallConv_ThisCall, NULL, Pass, 1);
+    });
+
+    unsigned char vstk[sizeof(CBaseEntity *) + sizeof(int)];
+    unsigned char *vptr = vstk;
+
+    *(CBaseEntity **)vptr = pEntity;
+    vptr += sizeof(CBaseEntity *);
+
+    *(int *)vptr = Params[2];
+
+    pWrapper->Execute(vstk, NULL);
+
+    return true;
+}
+
+// ============================================================================
+// SetBombTargetState native
+// ============================================================================
+
+cell_t Native_SetBombTargetState(IPluginContext *pContext, const cell_t *Params)
+{
+    edict_t *pEdict = g_pEngine->PEntityOfEntIndex(Params[1]);
+    CBaseEntity *pEntity = g_pGameEnts->EdictToBaseEntity(pEdict);
+
+    if (!pEntity || strcmp(pEdict->GetClassName(), "dod_bomb_target") != 0)
+    {
+        return pContext->ThrowNativeError("Entity index %d is not valid", Params[1]);
+    }
+
+    static ICallWrapper *pWrapper = NULL;
+
+    REGISTER_NATIVE_ADDR("BombTargetState",
+    {
+        PassInfo Pass[1];
+        Pass[0].flags = PASSFLAG_BYVAL;
+        Pass[0].size = sizeof(int);
+        Pass[0].type = PassType_Basic;
+        pWrapper = g_pBinTools->CreateCall(pAddress, CallConv_ThisCall, NULL, Pass, 1);
+    });
+
+    unsigned char vstk[sizeof(CBaseEntity *) + sizeof(int)];
+    unsigned char *vptr = vstk;
+
+    *(CBaseEntity **)vptr = pEntity;
+    vptr += sizeof(CBaseEntity *);
+
+    *(int *)vptr = Params[2];
+
+    pWrapper->Execute(vstk, NULL);
+
+    return true;
+}
+
+// ============================================================================
+// GetPlatform native
+// ============================================================================
+
+cell_t Native_GetPlatform(IPluginContext *pContext, const cell_t *Params)
+{
+#if defined PLATFORM_WINDOWS
+    #if defined PLATFORM_X64
+        return pContext->StringToCell("Windows x86_64");
     #else
-        return 0; // Windows 32-bit
+        return pContext->StringToCell("Windows x86");
     #endif
-#elif defined(PLATFORM_LINUX)
-    #if defined(PLATFORM_X64)
-        return 3; // Linux 64-bit
+#elif defined PLATFORM_LINUX
+    #if defined PLATFORM_X64
+        return pContext->StringToCell("Linux x86_64");
     #else
-        return 1; // Linux 32-bit
+        return pContext->StringToCell("Linux x86");
     #endif
 #else
-    return -1; // Unknown
+    return pContext->StringToCell("Unknown");
 #endif
 }

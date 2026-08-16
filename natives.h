@@ -1,43 +1,73 @@
-#ifndef _INCLUDE_DODHOOKS_NATIVES_H_
-#define _INCLUDE_DODHOOKS_NATIVES_H_
+#ifndef _INCLUDE_SOURCEMOD_EXTENSION_NATIVES_H_
+#define _INCLUDE_SOURCEMOD_EXTENSION_NATIVES_H_
 
 #include "extension.h"
 
-// Register all natives with SourcePawn
-void RegisterNatives();
+// Maximum control points
+#define MAX_CONTROL_POINTS 8
 
-// ============================================================
-// Native function declarations (19 natives)
-// ============================================================
+// Forward declarations for native functions
+cell_t Native_GetPlayerClass(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_SetPlayerClass(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_GetDesiredPlayerClass(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_SetDesiredPlayerClass(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_PopHelmet(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_SetNumControlPoints(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_PrecacheCPIcon(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_SetCPIcons(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_SetCPVisible(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_PauseTimer(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_ResumeTimer(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_SetTimeRemaining(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_GetTimeRemaining(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_RespawnPlayer(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_AddWaveTime(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_SetWinningTeam(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_SetRoundState(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_SetPlayerState(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_SetBombTargetState(IPluginContext *pContext, const cell_t *Params);
+cell_t Native_GetPlatform(IPluginContext *pContext, const cell_t *Params);
 
-// Player class natives
-cell_t Native_GetPlayerClass(IPluginContext* pContext, const cell_t* params);
-cell_t Native_SetPlayerClass(IPluginContext* pContext, const cell_t* params);
-cell_t Native_GetPlayerTeam(IPluginContext* pContext, const cell_t* params);
-cell_t Native_SetPlayerTeam(IPluginContext* pContext, const cell_t* params);
+// REGISTER_NATIVE_ADDR helper macro
+// This macro resolves a function address from gamedata and creates a call wrapper
+#define REGISTER_NATIVE_ADDR(name, code) \
+    do { \
+        if (!pWrapper) \
+        { \
+            void *pAddress = NULL; \
+            if (!g_pGameConf->GetMemSig(name, &pAddress) || !pAddress) \
+            { \
+                META_CONPRINTF("[DoDHooks] Warning: Failed to find signature for %s\n", name); \
+                return pContext->ThrowNativeError("Failed to find %s signature", name); \
+            } \
+            code \
+        } \
+    } while (0)
 
-// Weapon natives
-cell_t Native_GetPlayerWeapon(IPluginContext* pContext, const cell_t* params);
-cell_t Native_GivePlayerWeapon(IPluginContext* pContext, const cell_t* params);
-cell_t Native_RemovePlayerWeapon(IPluginContext* pContext, const cell_t* params);
+// Native function table
+static const sp_nativeinfo_t g_Natives[] =
+{
+    {"DOD_GetPlayerClass",         Native_GetPlayerClass},
+    {"DOD_SetPlayerClass",         Native_SetPlayerClass},
+    {"DOD_GetDesiredPlayerClass",  Native_GetDesiredPlayerClass},
+    {"DOD_SetDesiredPlayerClass",  Native_SetDesiredPlayerClass},
+    {"DOD_PopHelmet",             Native_PopHelmet},
+    {"DOD_SetNumControlPoints",    Native_SetNumControlPoints},
+    {"DOD_PrecacheCPIcon",        Native_PrecacheCPIcon},
+    {"DOD_SetCPIcons",            Native_SetCPIcons},
+    {"DOD_SetCPVisible",          Native_SetCPVisible},
+    {"DOD_PauseTimer",            Native_PauseTimer},
+    {"DOD_ResumeTimer",           Native_ResumeTimer},
+    {"DOD_SetTimeRemaining",       Native_SetTimeRemaining},
+    {"DOD_GetTimeRemaining",       Native_GetTimeRemaining},
+    {"DOD_RespawnPlayer",         Native_RespawnPlayer},
+    {"DOD_AddWaveTime",           Native_AddWaveTime},
+    {"DOD_SetWinningTeam",        Native_SetWinningTeam},
+    {"DOD_SetRoundState",         Native_SetRoundState},
+    {"DOD_SetPlayerState",        Native_SetPlayerState},
+    {"DOD_SetBombTargetState",    Native_SetBombTargetState},
+    {"DODHooks_GetPlatform",       Native_GetPlatform},
+    {NULL, NULL},
+};
 
-// Control point natives
-cell_t Native_GetCapIndex(IPluginContext* pContext, const cell_t* params);
-cell_t Native_GetCapOwner(IPluginContext* pContext, const cell_t* params);
-cell_t Native_SetCapOwner(IPluginContext* pContext, const cell_t* params);
-cell_t Native_GetCapProgress(IPluginContext* pContext, const cell_t* params);
-
-// Bomb target natives
-cell_t Native_GetBombTarget(IPluginContext* pContext, const cell_t* params);
-cell_t Native_IsBombPlanted(IPluginContext* pContext, const cell_t* params);
-cell_t Native_GetBombTimer(IPluginContext* pContext, const cell_t* params);
-
-// Timer natives
-cell_t Native_GetRoundTime(IPluginContext* pContext, const cell_t* params);
-cell_t Native_SetRoundTime(IPluginContext* pContext, const cell_t* params);
-
-// Misc natives
-cell_t Native_IsPlayerSpawned(IPluginContext* pContext, const cell_t* params);
-cell_t Native_GetPlatform(IPluginContext* pContext, const cell_t* params);
-
-#endif // _INCLUDE_DODHOOKS_NATIVES_H_
+#endif // _INCLUDE_SOURCEMOD_EXTENSION_NATIVES_H_
