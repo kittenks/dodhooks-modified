@@ -15,7 +15,7 @@ env:
   MMSOURCE_BRANCH: "1.12-dev"
   HL2SDK_DODS_BRANCH: "dods"
   PYTHON_VERSION: "3.11"
-  AMBUILD_REF: "2.2.0"
+  AMBUILD_REF: "2.2-branch"
 
 jobs:
   build:
@@ -74,12 +74,13 @@ jobs:
           ref: ${{ env.HL2SDK_DODS_BRANCH }}
           path: hl2sdk-dods
 
-      - name: Checkout AMBuild 2.2.0 (tag)
+      - name: Checkout AMBuild 2.2‑branch
         uses: actions/checkout@v4
         with:
           repository: alliedmodders/ambuild
           ref: ${{ env.AMBUILD_REF }}
           path: ambuild
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
